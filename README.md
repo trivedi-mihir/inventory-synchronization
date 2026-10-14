@@ -158,7 +158,7 @@ B.Tech Information Technology Student | Aspiring Software Developer
 I'm exploring the intersection of Computer Networks and web development by building interactive projects that turn theoretical concepts into practical visual experiences.
 
 - **LinkedIn:** https://www.linkedin.com/in/mihir-trivediit/
-- **GitHub:** Add your GitHub profile URL here.
+- **GitHub:** https://github.com/trivedi-mihir
 
 ## ⭐ Support
 
