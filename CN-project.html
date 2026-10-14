@@ -1,0 +1,2517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>NetSync — Live Inventory Synchronization</title>
+<style>
+/* ============================================================
+   NETSYNC · CANVAS EDITION (v5)
+   Layers (z-index):
+     1  canvas background
+     10 connections (SVG)
+     20 packets (SVG)
+     30 device cards (DOM)
+     40 selected card
+     100 modals
+     200 tooltips
+   ============================================================ */
+:root{
+  --bg-0:#05070e;
+  --bg-1:#0a0f1e;
+  --bg-2:#0f1628;
+  --card:rgba(18,24,44,.72);
+  --card-2:rgba(22,30,54,.55);
+  --line:rgba(140,170,255,.14);
+  --line-2:rgba(140,170,255,.32);
+  --txt:#eef3ff;
+  --dim:#93a0c7;
+  --dim-2:#5c6a94;
+  --blue:#3ba8ff;
+  --purple:#8b5cff;
+  --green:#2ee6a6;
+  --red:#ff5c7a;
+  --amber:#ffc857;
+  --r:16px;
+
+  /* Live card sizing — set by JS on resize */
+  --pc-w: 220px;
+  --srv-w: 260px;
+  --canvas-h: 640px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  color:var(--txt);font-size:14px;line-height:1.45;
+  background:
+    radial-gradient(1200px 700px at 12% -10%, rgba(59,168,255,.14), transparent 60%),
+    radial-gradient(1000px 600px at 92% 8%, rgba(139,92,255,.12), transparent 55%),
+    linear-gradient(180deg,var(--bg-0),var(--bg-1) 40%,var(--bg-2));
+  background-attachment:fixed;min-height:100vh;overflow-x:hidden;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit;max-width:100%}
+img,svg{max-width:100%}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(140,170,255,.2);border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:rgba(140,170,255,.35)}
+
+/* ============ TOP BAR ============ */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 24px;gap:16px;flex-wrap:wrap;
+  background:rgba(8,12,24,.72);backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:80;
+}
+.brand{display:flex;align-items:center;gap:13px;min-width:0}
+.logo{
+  width:42px;height:42px;border-radius:12px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  display:grid;place-items:center;font-weight:800;font-size:15px;color:#fff;
+  box-shadow:0 0 24px rgba(59,168,255,.55);letter-spacing:.5px;
+}
+.brand h1{font-size:19px;font-weight:800;letter-spacing:2.2px;
+  background:linear-gradient(90deg,#8bd0ff,#c0a6ff);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  white-space:nowrap;}
+.brand .subtitle{font-size:11.5px;color:var(--dim);letter-spacing:.4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.status-pill{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 17px;border-radius:24px;flex-shrink:0;
+  background:rgba(46,230,166,.1);border:1px solid rgba(46,230,166,.4);
+  font-size:11.5px;font-weight:700;letter-spacing:1.2px;color:var(--green);
+  white-space:nowrap;
+}
+.status-pill .dot{
+  width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 10px var(--green);animation:pulse 1.6s infinite;
+}
+.status-pill.offline{background:rgba(255,92,122,.1);border-color:rgba(255,92,122,.4);color:var(--red)}
+.status-pill.offline .dot{background:var(--red);box-shadow:0 0 10px var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ============ MAIN ============ */
+.stage{
+  max-width:1700px;margin:0 auto;padding:20px 24px 60px;
+  display:flex;flex-direction:column;gap:20px;
+}
+.panel{
+  background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r);backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  box-shadow:0 12px 40px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+  padding:18px 22px;position:relative;overflow:hidden;
+}
+.panel h2{
+  font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;
+  color:#b8ccff;margin-bottom:14px;display:flex;align-items:center;gap:10px;
+  justify-content:space-between;flex-wrap:wrap;
+}
+.panel h2 .lbl-wrap{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
+.panel h2 .bar{
+  display:inline-block;width:4px;height:14px;flex-shrink:0;
+  background:linear-gradient(180deg,var(--blue),var(--purple));border-radius:2px;
+}
+.panel h2 .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ============ CANVAS ============ */
+.canvas-panel{padding:0;overflow:visible}
+.canvas-toolbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 20px;border-bottom:1px solid var(--line);
+  background:rgba(8,12,24,.5);flex-wrap:wrap;
+}
+.canvas-title{
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+  font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#b8ccff;
+  white-space:nowrap;
+}
+.canvas-title .live-dot{
+  width:9px;height:9px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 10px var(--green);animation:pulse 1.4s infinite;
+}
+.canvas-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ============ SPEED DROPDOWN ============ */
+.speed-dd{
+  position:relative;
+}
+.speed-dd .dd-btn{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px 8px 13px;border-radius:24px;
+  background:rgba(8,14,28,.7);border:1px solid var(--line);
+  color:var(--txt);font-size:12px;font-weight:700;
+  font-family:'JetBrains Mono',monospace;letter-spacing:.4px;
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.speed-dd .dd-btn:hover{border-color:var(--line-2);background:rgba(140,170,255,.1)}
+.speed-dd.open .dd-btn{
+  border-color:var(--blue);
+  background:linear-gradient(135deg,rgba(59,168,255,.2),rgba(139,92,255,.18));
+  box-shadow:0 0 16px rgba(59,168,255,.35);
+}
+.speed-dd .dd-btn .ico{
+  font-size:13px;
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.speed-dd .dd-btn .caret{
+  font-size:9px;opacity:.65;transition:transform .2s;
+}
+.speed-dd.open .dd-btn .caret{transform:rotate(180deg)}
+
+.speed-dd .dd-menu{
+  position:absolute;top:calc(100% + 8px);right:0;z-index:90;
+  min-width:230px;max-height:420px;overflow-y:auto;
+  padding:6px;border-radius:14px;
+  background:linear-gradient(180deg,rgba(22,30,54,.99),rgba(12,18,38,.99));
+  border:1px solid var(--line-2);
+  box-shadow:0 22px 60px rgba(0,0,0,.7);
+  opacity:0;pointer-events:none;transform:translateY(-6px);
+  transition:opacity .15s, transform .15s;
+}
+.speed-dd.open .dd-menu{opacity:1;pointer-events:auto;transform:translateY(0)}
+.speed-dd .dd-head{
+  padding:8px 12px 6px;font-size:10px;letter-spacing:1.2px;
+  color:var(--dim);text-transform:uppercase;font-weight:700;
+}
+.speed-dd .dd-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:9px 12px;border-radius:9px;cursor:pointer;
+  font-size:12.5px;transition:background .12s;
+}
+.speed-dd .dd-item:hover{background:rgba(140,170,255,.1)}
+.speed-dd .dd-item.active{
+  background:linear-gradient(135deg,rgba(59,168,255,.24),rgba(139,92,255,.2));
+  color:#cfe6ff;font-weight:700;
+}
+.speed-dd .dd-item .sp{
+  font-family:'JetBrains Mono',monospace;font-weight:700;
+  color:var(--blue);font-size:13px;
+}
+.speed-dd .dd-item.active .sp{color:#fff}
+.speed-dd .dd-item .hint{
+  font-size:10.5px;color:var(--dim-2);letter-spacing:.3px;
+}
+.speed-dd .dd-sep{
+  height:1px;background:linear-gradient(90deg,transparent,rgba(140,170,255,.2),transparent);
+  margin:5px 6px;
+}
+
+/* ============ CANVAS AREA ============ */
+.canvas-wrap{
+  position:relative;width:100%;height:var(--canvas-h);overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(59,168,255,.06), transparent 65%),
+    repeating-linear-gradient(0deg,transparent 0 39px,rgba(140,170,255,.035) 39px 40px),
+    repeating-linear-gradient(90deg,transparent 0 39px,rgba(140,170,255,.035) 39px 40px),
+    rgba(4,8,18,.45);
+  user-select:none;-webkit-user-select:none;
+  touch-action:none;
+}
+.canvas-svg{
+  position:absolute;inset:0;width:100%;height:100%;
+  z-index:10;pointer-events:none;
+}
+.canvas-svg.packets{z-index:20}
+
+/* ============ DEVICE CARDS ============ */
+.device{
+  position:absolute;z-index:30;
+  width:var(--pc-w);
+  background:linear-gradient(180deg,rgba(22,30,54,.98),rgba(14,20,38,.98));
+  border:1.5px solid var(--line-2);
+  border-radius:14px;
+  padding:14px 15px 13px;
+  display:grid;
+  grid-template-rows:auto auto auto auto;
+  gap:9px;
+  cursor:grab;
+  transition:box-shadow .2s, border-color .2s;
+  box-shadow:0 10px 30px rgba(0,0,0,.45);
+  will-change:transform, left, top;
+  -webkit-touch-callout:none;
+}
+.device.server{
+  width:var(--srv-w);
+  border-color:rgba(139,92,255,.55);
+  background:linear-gradient(180deg,rgba(30,20,54,.98),rgba(16,12,32,.98));
+  box-shadow:0 10px 34px rgba(139,92,255,.2);
+}
+.device.dragging{
+  cursor:grabbing;
+  transform:scale(1.03);
+  box-shadow:0 18px 50px rgba(0,0,0,.6), 0 0 24px rgba(59,168,255,.5);
+  z-index:45;
+}
+.device.offline{opacity:.55}
+.device.offline .dt-status{color:var(--red)}
+.device.selected{
+  border-color:var(--blue);
+  box-shadow:0 12px 40px rgba(0,0,0,.5), 0 0 22px rgba(59,168,255,.55);
+  z-index:40;
+}
+.device.invalid{
+  border-color:var(--red);
+  box-shadow:0 0 24px rgba(255,92,122,.6);
+}
+.device.flash-ok{
+  animation:deviceFlash .7s ease;
+}
+@keyframes deviceFlash{
+  0%{box-shadow:0 0 32px rgba(46,230,166,.9)}
+  100%{box-shadow:0 10px 30px rgba(0,0,0,.45)}
+}
+
+/* Device header */
+.d-head{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:10px;
+  align-items:center;
+  min-width:0;
+}
+.d-head > div:nth-child(2){min-width:0}
+.d-icon{
+  font-size:22px;line-height:1;flex-shrink:0;
+}
+.d-name{
+  font-size:14px;font-weight:700;color:#e3ecff;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.d-sub{
+  font-size:11px;color:var(--dim);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.d-edit{
+  width:26px;height:26px;border-radius:7px;flex-shrink:0;
+  background:rgba(140,170,255,.1);border:1px solid var(--line);
+  color:var(--dim);font-size:12px;display:grid;place-items:center;
+  transition:all .15s;
+}
+.d-edit:hover{background:rgba(59,168,255,.28);color:#cfe6ff;border-color:var(--blue)}
+
+.d-div{
+  height:1px;background:linear-gradient(90deg,transparent,rgba(140,170,255,.22),transparent);
+}
+
+.d-statusblock{
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  font-size:11.5px;min-width:0;flex-wrap:wrap;
+}
+.dt-status{
+  font-weight:700;letter-spacing:.5px;
+  display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+}
+.dt-status.online{color:var(--green)}
+.dt-status.offline{color:var(--red)}
+.dt-status .sdot{
+  width:7px;height:7px;border-radius:50%;background:currentColor;
+  box-shadow:0 0 8px currentColor;
+}
+.dt-sync{
+  font-size:10.5px;font-weight:700;letter-spacing:.6px;
+  padding:2px 7px;border-radius:6px;white-space:nowrap;
+}
+.dt-sync.synced{background:rgba(46,230,166,.14);color:var(--green)}
+.dt-sync.syncing{background:rgba(255,200,87,.16);color:var(--amber)}
+.dt-sync.offline{background:rgba(255,92,122,.14);color:var(--red)}
+
+.d-net{
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:#8aa0c8;display:flex;align-items:center;justify-content:space-between;
+  gap:8px;min-width:0;
+}
+.d-net span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.d-net .clients{
+  color:var(--purple);font-weight:700;
+  font-size:10px;letter-spacing:.6px;
+}
+
+/* ============ DEVICE PICKER / DRAWER ============ */
+.picker{
+  position:fixed;top:0;right:0;height:100vh;height:100dvh;width:340px;z-index:150;
+  background:linear-gradient(180deg,rgba(14,20,38,.99),rgba(8,12,26,.99));
+  border-left:1px solid var(--line-2);padding:24px;
+  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
+  overflow-y:auto;box-shadow:-20px 0 60px rgba(0,0,0,.6);
+  -webkit-overflow-scrolling:touch;
+}
+.picker.open{transform:translateX(0)}
+.picker h3{
+  font-size:12px;letter-spacing:1.5px;text-transform:uppercase;
+  color:#b8ccff;margin-bottom:6px;
+}
+.picker .pk-name{font-size:20px;font-weight:800;color:#eef3ff;margin-top:10px;word-break:break-word}
+.picker .pk-sub{font-size:12.5px;color:var(--dim);margin-top:2px;word-break:break-word}
+.picker .pk-close{
+  position:absolute;top:20px;right:20px;
+  width:32px;height:32px;border-radius:9px;
+  background:rgba(140,170,255,.1);color:var(--txt);font-size:14px;
+  display:grid;place-items:center;
+}
+.picker .pk-close:hover{background:rgba(140,170,255,.24)}
+.picker .pk-sec{
+  margin-top:20px;padding:14px;border-radius:12px;
+  background:rgba(6,10,22,.55);border:1px solid var(--line);
+}
+.picker .pk-sec h4{
+  font-size:10.5px;color:var(--dim);letter-spacing:1.2px;text-transform:uppercase;
+  margin-bottom:10px;font-weight:700;
+}
+.picker .pk-kv{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:6px 0;font-size:12.5px;color:var(--dim);
+  border-bottom:1px solid rgba(140,170,255,.05);
+}
+.picker .pk-kv:last-child{border-bottom:none}
+.picker .pk-kv b{
+  color:var(--txt);font-family:'JetBrains Mono',monospace;font-weight:700;
+  word-break:break-all;text-align:right;
+}
+.picker .pk-kv b.green{color:var(--green)}
+.picker .pk-kv b.red{color:var(--red)}
+.picker .pk-kv b.amber{color:var(--amber)}
+.picker .pk-inv{
+  display:flex;justify-content:space-between;gap:10px;
+  padding:7px 0;font-size:12.5px;
+  border-bottom:1px solid rgba(140,170,255,.06);
+}
+.picker .pk-inv:last-child{border-bottom:none}
+.picker .pk-inv .pn{color:var(--dim);display:flex;align-items:center;gap:8px;min-width:0}
+.picker .pk-inv .pn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker .pk-inv .pv{color:#dbe7ff;font-family:'JetBrains Mono',monospace;font-weight:700;flex-shrink:0}
+.picker .pk-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+
+/* ============ BUTTONS ============ */
+.btn{
+  padding:9px 15px;border-radius:10px;
+  background:var(--card-2);border:1px solid var(--line);
+  color:var(--txt);font-size:12.5px;font-weight:600;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .15s;white-space:nowrap;
+}
+.btn:hover{background:rgba(140,170,255,.15);border-color:var(--line-2)}
+.btn-primary{background:linear-gradient(135deg,rgba(59,168,255,.24),rgba(139,92,255,.24));border-color:rgba(59,168,255,.5);color:#cfe6ff}
+.btn-primary:hover{background:linear-gradient(135deg,rgba(59,168,255,.4),rgba(139,92,255,.35));box-shadow:0 0 16px rgba(59,168,255,.35)}
+.btn-success{background:linear-gradient(135deg,rgba(46,230,166,.24),rgba(46,230,166,.12));border-color:rgba(46,230,166,.45);color:#a8ffe0}
+.btn-success:hover{background:linear-gradient(135deg,rgba(46,230,166,.4),rgba(46,230,166,.2));box-shadow:0 0 14px rgba(46,230,166,.4)}
+.btn-danger{background:rgba(255,92,122,.14);border-color:rgba(255,92,122,.4);color:#ffb8c6}
+.btn-danger:hover{background:rgba(255,92,122,.28)}
+.btn-secondary{background:rgba(140,170,255,.08);border-color:var(--line);color:#c8d4f0}
+.btn-secondary:hover{background:rgba(140,170,255,.18)}
+.btn-icon{
+  padding:0;width:36px;height:36px;border-radius:10px;justify-content:center;
+  background:var(--card-2);border:1px solid var(--line);color:var(--txt);font-size:15px;
+  flex-shrink:0;
+}
+.btn-icon:hover{background:rgba(140,170,255,.15)}
+.btn-block{width:100%}
+
+/* ============ INVENTORY GRID ============ */
+.inv-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:14px;
+}
+.inv-card{
+  background:var(--card-2);border:1px solid var(--line);
+  border-radius:14px;padding:16px;position:relative;
+  transition:transform .25s, border-color .25s, box-shadow .25s;
+  min-width:0;
+}
+.inv-card:hover{transform:translateY(-2px);border-color:var(--line-2)}
+.inv-card.updating{
+  border-color:var(--blue);
+  box-shadow:0 0 30px rgba(59,168,255,.4);
+  animation:cardPulse .9s;
+}
+@keyframes cardPulse{
+  0%{background:rgba(59,168,255,.18)}
+  100%{background:var(--card-2)}
+}
+.inv-card .icon{font-size:26px;margin-bottom:6px}
+.inv-card .cat{font-size:9.5px;color:var(--dim);letter-spacing:1.2px;text-transform:uppercase;font-weight:700}
+.inv-card .name{font-size:15px;font-weight:700;margin:2px 0 12px;color:#e7efff;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.inv-card .row{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;gap:8px}
+.inv-card .stock-lbl{font-size:9.5px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;font-weight:700}
+.inv-card .stock-val{
+  font-size:26px;font-weight:800;font-family:'JetBrains Mono',monospace;
+  color:#dbe7ff;line-height:1;transition:color .3s;
+}
+.inv-card .delta{
+  font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;
+  opacity:0;transition:opacity .3s;font-family:'JetBrains Mono',monospace;
+  margin-left:8px;white-space:nowrap;
+}
+.inv-card .delta.up{color:var(--green);background:rgba(46,230,166,.15);opacity:1}
+.inv-card .delta.down{color:var(--red);background:rgba(255,92,122,.15);opacity:1}
+.inv-card .price{font-size:12px;color:var(--dim);font-family:'JetBrains Mono',monospace;white-space:nowrap}
+.inv-card .actions{display:flex;gap:6px;margin-top:12px}
+.inv-card .actions button{
+  flex:1;padding:8px;border-radius:8px;font-size:11.5px;font-weight:600;
+  background:rgba(59,168,255,.14);border:1px solid rgba(59,168,255,.28);color:#b8d8ff;
+  transition:all .15s;white-space:nowrap;
+}
+.inv-card .actions button:hover{background:rgba(59,168,255,.28)}
+.inv-card .actions button.danger{background:rgba(255,92,122,.12);border-color:rgba(255,92,122,.3);color:#ffb8c6}
+.inv-card .actions button.danger:hover{background:rgba(255,92,122,.28)}
+.add-card{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:160px;border:1.5px dashed var(--line-2);border-radius:14px;
+  color:var(--dim);font-size:12.5px;font-weight:600;letter-spacing:.5px;
+  cursor:pointer;transition:all .2s;gap:8px;
+}
+.add-card:hover{background:rgba(59,168,255,.08);color:#b8d8ff;border-color:var(--blue)}
+.add-card .plus{font-size:28px;font-weight:300}
+
+/* ============ ACTIVITY FEED ============ */
+.activity-list{
+  display:flex;flex-direction:column;gap:5px;
+  max-height:230px;overflow-y:auto;padding-right:4px;
+  -webkit-overflow-scrolling:touch;
+}
+.act-item{
+  display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:9px;
+  background:rgba(6,10,22,.5);border-left:2px solid var(--blue);
+  font-size:12.5px;animation:slideIn .3s;min-width:0;
+}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.act-item.ok{border-left-color:var(--green)}
+.act-item.err{border-left-color:var(--red)}
+.act-item.warn{border-left-color:var(--amber)}
+.act-item.sys{border-left-color:var(--purple)}
+.act-item .t{color:var(--dim-2);font-family:'JetBrains Mono',monospace;font-size:11px;flex-shrink:0}
+.act-item .msg{color:#c8d4f0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act-item .msg b{color:#a8d0ff;font-weight:600}
+
+/* ============ MODALS ============ */
+.modal-back{
+  position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  display:grid;place-items:center;z-index:100;padding:20px;
+  animation:fadeIn .2s;overflow-y:auto;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{
+  background:linear-gradient(180deg,rgba(22,30,54,.98),rgba(12,18,38,.98));
+  border:1px solid var(--line-2);border-radius:18px;padding:26px;
+  max-width:480px;width:100%;box-shadow:0 30px 90px rgba(0,0,0,.75);
+  animation:popIn .25s;max-height:88vh;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+@keyframes popIn{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:none}}
+.modal h3{font-size:17px;margin-bottom:18px;color:#dbe7ff;letter-spacing:.3px}
+.modal .lbl{
+  display:block;font-size:10.5px;color:var(--dim);margin:14px 0 6px;
+  letter-spacing:1px;text-transform:uppercase;font-weight:700;
+}
+.modal .input{
+  width:100%;padding:11px 14px;border-radius:10px;
+  background:rgba(8,14,28,.8);border:1px solid var(--line);
+  color:var(--txt);font-size:13.5px;outline:none;transition:all .18s;
+}
+.modal .input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,168,255,.15)}
+.modal select.input{cursor:pointer}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
+.modal-actions button{
+  padding:11px 20px;border-radius:10px;font-size:13px;font-weight:600;
+  background:var(--card-2);border:1px solid var(--line);color:var(--txt);
+  transition:all .15s;
+}
+.modal-actions button:hover{background:rgba(140,170,255,.15)}
+.modal-actions .primary{background:linear-gradient(135deg,var(--blue),var(--purple));border:none;color:#fff}
+.modal-actions .primary:hover{box-shadow:0 0 22px rgba(59,168,255,.5)}
+.modal-actions .danger{background:rgba(255,92,122,.14);border-color:rgba(255,92,122,.4);color:#ffb8c6}
+.modal-actions .danger:hover{background:rgba(255,92,122,.28)}
+
+/* ============ PACKET INSPECTOR ============ */
+.pkt-pop{
+  position:fixed;z-index:200;
+  background:rgba(8,12,24,.97);border:1px solid var(--blue);
+  border-radius:14px;padding:16px 18px;min-width:260px;max-width:340px;
+  box-shadow:0 22px 70px rgba(0,0,0,.75);animation:popIn .2s;font-size:12.5px;
+}
+.pkt-pop h4{
+  font-size:11px;letter-spacing:1.6px;color:var(--blue);text-transform:uppercase;
+  margin-bottom:12px;font-weight:800;display:flex;justify-content:space-between;align-items:center;gap:10px;
+}
+.pkt-pop h4 button{
+  width:22px;height:22px;border-radius:6px;background:rgba(140,170,255,.12);
+  font-size:12px;color:var(--txt);display:grid;place-items:center;flex-shrink:0;
+}
+.pkt-pop h4 button:hover{background:rgba(140,170,255,.28)}
+.pkt-pop .ptype{
+  font-size:15px;font-weight:700;color:#eef3ff;margin-bottom:12px;
+  padding:8px 12px;background:rgba(59,168,255,.1);border-radius:8px;text-align:center;
+}
+.pkt-pop table{width:100%;border-collapse:collapse}
+.pkt-pop td{padding:5px 0;vertical-align:top;font-size:12.5px;border-bottom:1px solid rgba(140,170,255,.06);word-break:break-word}
+.pkt-pop td:first-child{color:var(--dim);width:40%;font-size:11px;letter-spacing:.5px;text-transform:uppercase;font-weight:600}
+.pkt-pop td:last-child{color:#e3ecff;font-weight:600;font-family:'JetBrains Mono',monospace}
+
+/* ============ STATUS CHIPS ============ */
+.statusbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chip{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 14px;border-radius:24px;
+  background:var(--card-2);border:1px solid var(--line);
+  font-size:12px;font-weight:600;color:var(--dim);
+  white-space:nowrap;
+}
+.chip b{color:var(--txt);font-family:'JetBrains Mono',monospace;font-weight:700}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);flex-shrink:0}
+
+/* ============ TOASTS ============ */
+.toasts{position:fixed;bottom:24px;right:24px;z-index:500;
+  display:flex;flex-direction:column;gap:10px;align-items:flex-end;pointer-events:none;
+  max-width:calc(100vw - 48px);}
+.toast{
+  padding:13px 20px;border-radius:12px;font-size:13px;font-weight:600;
+  background:rgba(12,18,38,.95);border:1px solid var(--line-2);
+  box-shadow:0 12px 40px rgba(0,0,0,.6);backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  animation:toastIn .3s;max-width:340px;pointer-events:auto;
+  word-break:break-word;
+}
+.toast.ok{border-color:rgba(46,230,166,.55);color:#a8ffe0;background:rgba(20,42,38,.95)}
+.toast.err{border-color:rgba(255,92,122,.55);color:#ffb8c6;background:rgba(42,20,28,.95)}
+.toast.warn{border-color:rgba(255,200,87,.55);color:#ffe0a8;background:rgba(42,36,20,.95)}
+@keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+
+/* ============================================================
+   RESPONSIVE BREAKPOINTS
+   ============================================================ */
+
+/* Large laptop / desktop */
+@media (max-width:1400px){
+  .stage{padding:18px 20px 50px;gap:18px}
+}
+
+/* Tablet landscape */
+@media (max-width:1200px){
+  .stage{padding:16px 18px 44px;gap:16px}
+  .panel{padding:16px 18px}
+  .canvas-toolbar{padding:12px 16px}
+  .speed-dd .dd-menu{min-width:220px}
+}
+
+/* Tablet portrait */
+@media (max-width:900px){
+  .topbar{padding:12px 16px;gap:12px}
+  .brand h1{font-size:16px;letter-spacing:1.6px}
+  .brand .subtitle{display:none}
+  .logo{width:38px;height:38px;font-size:13px}
+  .status-pill{padding:7px 14px;font-size:10.5px}
+  .stage{padding:14px 14px 40px;gap:14px}
+  .panel{padding:14px 16px}
+  .panel h2{font-size:11px;letter-spacing:1.2px}
+  .canvas-toolbar{padding:12px 14px;gap:10px}
+  .canvas-title{font-size:11px}
+  .canvas-tools .btn{padding:8px 12px;font-size:11.5px}
+  .canvas-tools .btn span.hide-sm{display:none}
+  .modal{padding:22px 20px;border-radius:16px}
+  .modal h3{font-size:15.5px}
+  .picker{width:100%;max-width:420px}
+  .pkt-pop{max-width:calc(100vw - 32px)}
+}
+
+/* Phone landscape */
+@media (max-width:768px){
+  .stage{padding:12px 12px 36px;gap:12px}
+  .panel{padding:12px 14px;border-radius:14px}
+  .panel h2{font-size:10.5px;gap:8px;margin-bottom:12px}
+  .canvas-toolbar{padding:10px 12px;gap:8px}
+  .canvas-tools{gap:6px}
+  .canvas-tools .btn{padding:7px 10px;font-size:11px;border-radius:8px}
+  .speed-dd .dd-btn{padding:7px 10px 7px 11px;font-size:11px}
+  .speed-dd .dd-menu{min-width:200px}
+  .btn-icon{width:32px;height:32px;font-size:13px}
+  .modal{padding:20px 18px}
+  .modal-actions button{padding:10px 16px;font-size:12.5px}
+  .inv-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+  .inv-card{padding:13px}
+  .inv-card .name{font-size:13.5px;margin-bottom:10px}
+  .inv-card .stock-val{font-size:22px}
+  .inv-card .price{font-size:11px}
+  .statusbar{gap:6px}
+  .chip{padding:6px 11px;font-size:11px}
+  .chip b{font-size:11px}
+  .act-item{padding:9px 11px;font-size:11.5px;gap:9px}
+  .act-item .t{font-size:10px}
+}
+
+/* Phone portrait */
+@media (max-width:600px){
+  .topbar{padding:10px 12px;gap:10px}
+  .brand{gap:9px}
+  .logo{width:34px;height:34px;font-size:12px;border-radius:10px}
+  .brand h1{font-size:14.5px;letter-spacing:1.2px}
+  .status-pill{padding:6px 11px;font-size:10px;letter-spacing:.8px;gap:6px}
+  .status-pill .dot{width:7px;height:7px}
+  .stage{padding:10px 10px 30px;gap:10px}
+  .panel{padding:11px 12px;border-radius:12px}
+  .panel h2{font-size:10px;letter-spacing:1px;margin-bottom:10px}
+  .panel h2 .bar{height:12px}
+  .canvas-panel{border-radius:12px}
+
+  /* Toolbar stacks into two rows on mobile */
+  .canvas-toolbar{
+    flex-direction:column;align-items:stretch;
+    padding:10px 12px;gap:8px;
+  }
+  .canvas-title{justify-content:flex-start}
+  .canvas-tools{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr)) auto;
+    gap:6px;
+    width:100%;
+  }
+  .canvas-tools > *{min-width:0}
+  .canvas-tools .btn{padding:7px 8px;font-size:11px;width:100%;overflow:hidden;text-overflow:ellipsis}
+  .speed-dd{position:relative;min-width:0}
+  .speed-dd .dd-btn{
+    padding:7px 9px;font-size:11px;width:100%;justify-content:space-between;
+  }
+  .speed-dd .dd-btn .dd-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .speed-dd .dd-menu{
+    min-width:0;width:min(92vw, 320px);
+    right:auto;left:50%;transform:translate(-50%, -6px);
+  }
+  .speed-dd.open .dd-menu{transform:translate(-50%, 0)}
+  .btn-icon{width:100%;height:100%;min-height:34px}
+  .canvas-tools .btn-icon{width:auto;padding:7px 10px}
+
+  .modal{padding:18px 16px;border-radius:14px;max-width:100%}
+  .modal h3{font-size:14.5px;margin-bottom:14px}
+  .modal .input{padding:10px 12px;font-size:13px}
+  .modal-actions{gap:8px}
+  .modal-actions button{flex:1;padding:10px 12px;font-size:12px}
+
+  .picker{max-width:100%;padding:20px 18px}
+  .picker .pk-name{font-size:17px}
+  .pkt-pop{padding:14px 15px;font-size:12px;border-radius:12px}
+  .pkt-pop .ptype{font-size:13.5px;padding:7px 10px}
+
+  .inv-grid{grid-template-columns:1fr 1fr;gap:8px}
+  .inv-card{padding:11px}
+  .inv-card .icon{font-size:22px;margin-bottom:4px}
+  .inv-card .cat{font-size:9px}
+  .inv-card .name{font-size:12.5px;margin-bottom:8px}
+  .inv-card .stock-val{font-size:19px}
+  .inv-card .stock-lbl{font-size:9px}
+  .inv-card .price{font-size:10px}
+  .inv-card .actions{gap:4px;margin-top:10px}
+  .inv-card .actions button{padding:7px 4px;font-size:10.5px}
+  .add-card{min-height:120px;font-size:11.5px}
+  .add-card .plus{font-size:22px}
+
+  .activity-list{max-height:200px}
+  .act-item{padding:8px 10px;font-size:11px;gap:8px}
+  .act-item .t{font-size:9.5px}
+  .act-item .msg{white-space:normal}
+
+  .toasts{bottom:14px;right:14px;left:14px;align-items:stretch;max-width:100%}
+  .toast{max-width:100%;font-size:12px;padding:11px 15px}
+
+  .statusbar{grid-template-columns:1fr 1fr;display:grid}
+  .chip{justify-content:center}
+}
+
+/* Very small phones */
+@media (max-width:400px){
+  .brand h1{display:none}
+  .brand .logo{width:32px;height:32px}
+  .status-pill{font-size:9.5px;padding:5px 10px}
+  .inv-grid{grid-template-columns:1fr}
+  .canvas-tools{grid-template-columns:1fr 1fr}
+  .canvas-tools .speed-dd{grid-column:1 / -1}
+  .speed-dd .dd-menu{width:96vw}
+  .modal-actions{flex-direction:column-reverse}
+  .modal-actions button{width:100%}
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">NS</div>
+    <div>
+      <h1>NETSYNC</h1>
+      <span class="subtitle">Live Inventory Synchronization</span>
+    </div>
+  </div>
+  <div class="status-pill" id="netStatus">
+    <span class="dot"></span><span id="netStatusText">NETWORK ONLINE</span>
+  </div>
+</header>
+
+<main class="stage">
+
+  <!-- ================= LIVE NETWORK CANVAS ================= -->
+  <section class="panel canvas-panel">
+    <div class="canvas-toolbar">
+      <div class="canvas-title">
+        <span class="live-dot"></span> Network Live
+      </div>
+      <div class="canvas-tools">
+        <button class="btn btn-primary" id="addPcBtn">+ Add PC</button>
+        <button class="btn btn-secondary" id="addSrvBtn">+ Add Server</button>
+        <button class="btn btn-secondary" id="autoArrangeBtn">⟳ Auto Arrange</button>
+        <button class="btn btn-secondary" id="resetLayoutBtn">⌂ Reset Layout</button>
+
+        <!-- Speed dropdown -->
+        <div class="speed-dd" id="speedDd">
+          <button class="dd-btn" id="speedDdBtn" aria-haspopup="listbox" aria-expanded="false">
+            <span class="ico">⚡</span>
+            <span class="dd-label" id="speedDdLabel">1× — Normal</span>
+            <span class="caret">▼</span>
+          </button>
+          <div class="dd-menu" id="speedDdMenu" role="listbox"></div>
+        </div>
+
+        <button class="btn-icon" id="infoBtn" title="Network details">ⓘ</button>
+      </div>
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap">
+      <svg class="canvas-svg" id="linkSvg" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="linkGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#3ba8ff"/>
+            <stop offset="100%" stop-color="#8b5cff"/>
+          </linearGradient>
+          <linearGradient id="srvGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#8b5cff"/>
+            <stop offset="100%" stop-color="#3ba8ff"/>
+          </linearGradient>
+        </defs>
+      </svg>
+
+      <svg class="canvas-svg packets" id="packetSvg" preserveAspectRatio="none">
+        <defs>
+          <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+      </svg>
+
+      <div id="deviceLayer"></div>
+    </div>
+  </section>
+
+  <!-- ================= STATUS CHIPS ================= -->
+  <section class="panel" style="padding:14px 18px">
+    <div class="statusbar">
+      <div class="chip"><span class="dot"></span>Online <b id="chipConn">0</b></div>
+      <div class="chip"><span class="dot" style="background:var(--blue);box-shadow:0 0 8px var(--blue)"></span>Packets <b id="chipPkts">0</b></div>
+      <div class="chip"><span class="dot" style="background:var(--amber);box-shadow:0 0 8px var(--amber)"></span>Latency <b id="chipLat">—</b></div>
+      <div class="chip"><span class="dot" id="syncDot"></span>Sync <b id="chipSync">100%</b></div>
+      <div class="chip"><span class="dot" style="background:var(--purple);box-shadow:0 0 8px var(--purple)"></span>Servers <b id="chipSrvs">1</b></div>
+    </div>
+  </section>
+
+  <!-- ================= CENTRAL INVENTORY ================= -->
+  <section class="panel">
+    <h2>
+      <div class="lbl-wrap">
+        <span class="bar"></span> Central Inventory
+        <span style="color:var(--dim);font-size:10.5px;font-weight:600;letter-spacing:.5px;text-transform:none">SERVER-01 · AUTHORITATIVE</span>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="addProdBtn">+ Add Product</button>
+      </div>
+    </h2>
+    <div class="inv-grid" id="invGrid"></div>
+  </section>
+
+  <!-- ================= ACTIVITY ================= -->
+  <section class="panel">
+    <h2><div class="lbl-wrap"><span class="bar"></span> Live Activity</div></h2>
+    <div class="activity-list" id="activityList">
+      <div class="act-item sys"><span class="t">--:--:--</span><span class="msg">System ready · waiting for activity</span></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ DEVICE PICKER PANEL ============ -->
+<aside class="picker" id="picker">
+  <button class="pk-close" id="pickerClose">✕</button>
+  <h3 id="pkHeader">PC DETAILS</h3>
+  <div class="pk-name" id="pkName">PC-02</div>
+  <div class="pk-sub" id="pkSub">Bob</div>
+  <div id="pkBody"></div>
+</aside>
+
+<!-- ============ NETWORK DETAILS DRAWER ============ -->
+<aside class="picker" id="drawer">
+  <button class="pk-close" id="drawerClose">✕</button>
+  <h3>Network Details</h3>
+  <div style="margin-top:14px">
+    <div class="pk-sec">
+      <h4>Protocol</h4>
+      <div style="display:flex;gap:6px">
+        <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:rgba(8,14,28,.7);border:1px solid var(--line)">
+          <input type="radio" name="proto" value="TCP" checked> TCP
+        </label>
+        <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:rgba(8,14,28,.7);border:1px solid var(--line)">
+          <input type="radio" name="proto" value="UDP"> UDP
+        </label>
+      </div>
+    </div>
+    <div class="pk-sec">
+      <h4>Latency</h4>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:5px">
+        <span>0ms</span><span id="latVal">120 ms</span><span>1000ms</span>
+      </div>
+      <input type="range" id="latSlider" min="0" max="1000" value="120" step="10" style="width:100%"/>
+    </div>
+    <div class="pk-sec">
+      <h4>Packet Loss</h4>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:5px">
+        <span>0%</span><span id="lossVal">3 %</span><span>50%</span>
+      </div>
+      <input type="range" id="lossSlider" min="0" max="50" value="3" step="1" style="width:100%"/>
+    </div>
+    <div class="pk-sec">
+      <h4>Totals</h4>
+      <div class="pk-kv"><span>Sent</span><b id="totSent">0</b></div>
+      <div class="pk-kv"><span>Delivered</span><b class="green" id="totOk">0</b></div>
+      <div class="pk-kv"><span>Lost</span><b class="red" id="totLost">0</b></div>
+      <div class="pk-kv"><span>Retransmits</span><b id="totRe">0</b></div>
+      <div class="pk-kv"><span>Transactions</span><b id="totTx">0</b></div>
+    </div>
+    <div class="pk-sec">
+      <h4>About</h4>
+      <div style="font-size:12.5px;color:var(--dim);line-height:1.7">
+        NetSync shows how a centralized server keeps inventory synchronized across client computers. Drag devices, edit them, watch packets travel.
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================================================
+   1. UTILITIES
+   ============================================================ */
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const uid = (p='id') => p + '-' + Math.random().toString(36).slice(2,7);
+const now = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+};
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+/* ============================================================
+   2. ANIMATION SPEED + SPEED OPTIONS
+   ============================================================ */
+let ANIM_SPEED = 1;
+
+const SPEED_OPTIONS = [
+  { value: 0.1, label: '0.1×', hint: 'Ultra Slow — perfect for demos' },
+  { value: 0.25, label: '0.25×', hint: 'Very Slow' },
+  { value: 0.5, label: '0.5×', hint: 'Slow' },
+  { value: 0.75, label: '0.75×', hint: 'Relaxed' },
+  { value: 1,   label: '1×',   hint: 'Normal' },
+  { value: 1.25, label: '1.25×', hint: 'Slightly Fast' },
+  { value: 1.5, label: '1.5×', hint: 'Fast' },
+  { value: 2,   label: '2×',   hint: 'Very Fast' },
+  { value: 3,   label: '3×',   hint: 'Rapid' },
+  { value: 5,   label: '5×',   hint: 'Extreme' },
+  { value: 8,   label: '8×',   hint: 'Insane' },
+  { value: 10,  label: '10×',  hint: 'Maximum' }
+];
+
+function setSpeed(v){
+  ANIM_SPEED = v;
+  const opt = SPEED_OPTIONS.find(o => o.value === v) || SPEED_OPTIONS[4];
+  const label = $('#speedDdLabel');
+  if (label) label.textContent = `${opt.label} — ${opt.hint}`;
+  $$('#speedDdMenu .dd-item').forEach(el => {
+    el.classList.toggle('active', parseFloat(el.dataset.sp) === v);
+  });
+  Feed.push(`⚡ Animation speed: <b>${opt.label}</b>`, 'sys');
+}
+
+function buildSpeedMenu(){
+  const menu = $('#speedDdMenu');
+  if (!menu) return;
+  const groups = [
+    { name: 'Slow Motion', items: SPEED_OPTIONS.filter(o => o.value < 1) },
+    { name: 'Normal', items: SPEED_OPTIONS.filter(o => o.value === 1) },
+    { name: 'Faster', items: SPEED_OPTIONS.filter(o => o.value > 1 && o.value <= 3) },
+    { name: 'Extreme', items: SPEED_OPTIONS.filter(o => o.value > 3) }
+  ];
+  let html = '';
+  groups.forEach((g, idx) => {
+    if (idx > 0) html += '<div class="dd-sep"></div>';
+    html += `<div class="dd-head">${g.name}</div>`;
+    g.items.forEach(o => {
+      html += `
+        <div class="dd-item" data-sp="${o.value}" role="option">
+          <span class="sp">${o.label}</span>
+          <span class="hint">${o.hint}</span>
+        </div>`;
+    });
+  });
+  menu.innerHTML = html;
+
+  $$('#speedDdMenu .dd-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const v = parseFloat(el.dataset.sp);
+      setSpeed(v);
+      closeSpeedMenu();
+    });
+  });
+}
+
+function openSpeedMenu(){
+  const dd = $('#speedDd');
+  dd.classList.add('open');
+  $('#speedDdBtn').setAttribute('aria-expanded','true');
+}
+function closeSpeedMenu(){
+  const dd = $('#speedDd');
+  dd.classList.remove('open');
+  $('#speedDdBtn').setAttribute('aria-expanded','false');
+}
+function toggleSpeedMenu(){
+  const dd = $('#speedDd');
+  if (dd.classList.contains('open')) closeSpeedMenu();
+  else openSpeedMenu();
+}
+
+function initSpeedControl(){
+  buildSpeedMenu();
+  $('#speedDdBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    toggleSpeedMenu();
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#speedDd')) closeSpeedMenu();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeSpeedMenu();
+  });
+  setSpeed(ANIM_SPEED);
+}
+
+/* ============================================================
+   3. STATE
+   ============================================================ */
+const State = {
+  servers: [],
+  server: null,
+  products: [],
+  pcs: [],
+  links: [],
+  conditions: { latency:120, loss:3 },
+  proto: 'TCP',
+  packets: [],
+  stats: { sent:0, delivered:0, lost:0, retx:0, tx:0 },
+  lastLatency: 0,
+  syncing: 0,
+  selectedId: null
+};
+
+/* ============================================================
+   4. FEED
+   ============================================================ */
+const Feed = {
+  push(msg, kind='sys'){
+    const el = $('#activityList'); if (!el) return;
+    const item = document.createElement('div');
+    item.className = 'act-item ' + kind;
+    item.innerHTML = `<span class="t">${now()}</span><span class="msg">${msg}</span>`;
+    el.prepend(item);
+    while (el.children.length > 8) el.lastChild.remove();
+  },
+  clear(){ $('#activityList').innerHTML = ''; }
+};
+
+/* ============================================================
+   5. TOASTS
+   ============================================================ */
+function toast(msg, type='info'){
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type==='success'?'ok':type==='error'?'err':type==='warn'?'warn':'');
+  t.textContent = msg;
+  $('#toasts').appendChild(t);
+  setTimeout(() => { t.style.transition='opacity .4s'; t.style.opacity='0'; setTimeout(()=>t.remove(),400); }, 2600);
+}
+
+/* ============================================================
+   6. RESPONSIVE SIZING (dynamic CSS variables)
+   ============================================================ */
+function applyResponsiveSizing(){
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const root = document.documentElement;
+
+  // Canvas height scales with viewport (clamped)
+  let canvasH;
+  if (vw <= 400) canvasH = Math.max(360, Math.min(440, vh - 380));
+  else if (vw <= 600) canvasH = Math.max(400, Math.min(500, vh - 400));
+  else if (vw <= 768) canvasH = Math.max(440, Math.min(540, vh - 380));
+  else if (vw <= 900) canvasH = Math.max(500, Math.min(580, vh - 320));
+  else if (vw <= 1200) canvasH = Math.max(560, Math.min(640, vh - 280));
+  else canvasH = 660;
+
+  // Card widths scale with viewport
+  let pcW, srvW;
+  if (vw <= 400){ pcW = 158; srvW = 184; }
+  else if (vw <= 600){ pcW = 172; srvW = 200; }
+  else if (vw <= 900){ pcW = 190; srvW = 220; }
+  else if (vw <= 1200){ pcW = 205; srvW = 245; }
+  else { pcW = 220; srvW = 260; }
+
+  root.style.setProperty('--pc-w', pcW + 'px');
+  root.style.setProperty('--srv-w', srvW + 'px');
+  root.style.setProperty('--canvas-h', canvasH + 'px');
+}
+
+/* ============================================================
+   7. DEVICE DIMENSION HELPERS
+   ============================================================ */
+function cardSize(dev){
+  const isServer = dev.role !== undefined;
+  const vw = window.innerWidth;
+  if (vw <= 400) return isServer ? { w:184, h:150 } : { w:158, h:142 };
+  if (vw <= 600) return isServer ? { w:200, h:158 } : { w:172, h:150 };
+  if (vw <= 900) return isServer ? { w:220, h:166 } : { w:190, h:158 };
+  if (vw <= 1200) return isServer ? { w:245, h:174 } : { w:205, h:162 };
+  return isServer ? { w:260, h:182 } : { w:220, h:170 };
+}
+
+/* ============================================================
+   8. DEVICE CENTER HELPER
+   ============================================================ */
+function deviceCenter(dev){
+  const el = document.querySelector(`[data-device-id="${dev.id}"]`);
+  if (el){
+    const r = el.getBoundingClientRect();
+    const cr = $('#canvasWrap').getBoundingClientRect();
+    return {
+      x: r.left - cr.left + r.width/2,
+      y: r.top - cr.top + r.height/2
+    };
+  }
+  const s = cardSize(dev);
+  return { x: (dev.x||0) + s.w/2, y: (dev.y||0) + s.h/2 };
+}
+
+/* ============================================================
+   9. DEFAULT POSITIONS
+   ============================================================ */
+function defaultPositions(){
+  const wrap = $('#canvasWrap');
+  const W = wrap ? wrap.clientWidth : 1200;
+  const H = wrap ? wrap.clientHeight : 640;
+  const cx = W / 2, cy = H / 2;
+  const sSize = cardSize({ role:'PRIMARY' });
+  const pSize = cardSize({});
+
+  if (State.server) {
+    State.server.x = cx - sSize.w/2;
+    State.server.y = Math.max(20, cy - H * 0.30);
+  }
+
+  const n = State.pcs.length;
+  const radiusX = Math.min(W * 0.40, W - pSize.w*1.4);
+  const radiusY = Math.min(H * 0.24, H - pSize.h*1.6);
+  State.pcs.forEach((pc, i) => {
+    const t = n === 1 ? 0.5 : i / (n - 1);
+    const angle = Math.PI * (0.15 + t * 0.7);
+    pc.x = cx + Math.cos(angle) * radiusX - pSize.w/2;
+    pc.y = cy + Math.sin(angle) * radiusY + 40;
+  });
+
+  const backups = State.servers.filter(s => s.role !== 'PRIMARY');
+  backups.forEach((srv, i) => {
+    srv.x = cx - sSize.w/2 + (i - (backups.length-1)/2) * (sSize.w + 40);
+    srv.y = H - sSize.h - 20;
+  });
+}
+
+/* ============================================================
+   10. SEED DATA
+   ============================================================ */
+function seed(){
+  State.products = [
+    { id:'p1', name:'iPhone 17',   category:'Phones',      price:79999, icon:'📱' },
+    { id:'p2', name:'MacBook',     category:'Laptops',     price:129999, icon:'💻' },
+    { id:'p3', name:'Dell Laptop', category:'Laptops',     price:65999,  icon:'💻' },
+    { id:'p4', name:'AirPods',     category:'Audio',       price:24999,  icon:'🎧' },
+    { id:'p5', name:'Keyboard',    category:'Accessories', price:2999,   icon:'⌨️' },
+    { id:'p6', name:'Mouse',       category:'Accessories', price:1499,   icon:'🖱️' },
+    { id:'p7', name:'Monitor',     category:'Displays',    price:18999,  icon:'🖥️' },
+  ];
+
+  const srv = {
+    id:'srv1', name:'SERVER-01', ip:'192.168.1.100', port:8080,
+    type:'Inventory', role:'PRIMARY', status:'ONLINE',
+    inventory:{ p1:20, p2:12, p3:15, p4:40, p5:60, p6:80, p7:25 }
+  };
+  State.servers = [srv];
+  State.server = srv;
+
+  State.pcs = [
+    { id:'pc1', name:'PC-01', employee:'Alice',   ip:'192.168.1.101', port:5001, status:'ONLINE', inventory:{}, syncState:'SYNCED' },
+    { id:'pc2', name:'PC-02', employee:'Bob',     ip:'192.168.1.102', port:5001, status:'ONLINE', inventory:{}, syncState:'SYNCED' },
+    { id:'pc3', name:'PC-03', employee:'Charlie', ip:'192.168.1.103', port:5001, status:'ONLINE', inventory:{}, syncState:'SYNCED' },
+    { id:'pc4', name:'PC-04', employee:'David',   ip:'192.168.1.104', port:5001, status:'ONLINE', inventory:{}, syncState:'SYNCED' },
+  ];
+  State.pcs.forEach(pc => pc.inventory = { ...State.server.inventory });
+
+  State.links = State.pcs.map(pc => ({
+    id: uid('lnk'), fromId: pc.id, toId: srv.id, kind:'pc'
+  }));
+
+  defaultPositions();
+}
+
+/* ============================================================
+   11. RENDER: LINKS
+   ============================================================ */
+function renderLinks(){
+  const svg = $('#linkSvg');
+  const wrap = $('#canvasWrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="linkGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3ba8ff"/>
+        <stop offset="100%" stop-color="#8b5cff"/>
+      </linearGradient>
+      <linearGradient id="srvGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#8b5cff"/>
+        <stop offset="100%" stop-color="#3ba8ff"/>
+      </linearGradient>
+    </defs>
+    ${State.links.map(l => {
+      const a = findDevice(l.fromId);
+      const b = findDevice(l.toId);
+      if (!a || !b) return '';
+      const ca = deviceCenter(a);
+      const cb = deviceCenter(b);
+      const off = (a.status === 'OFFLINE') || (b.status === 'OFFLINE');
+      const isSel = State.selectedId === a.id || State.selectedId === b.id;
+      const stroke = l.kind === 'srv' ? 'url(#srvGrad)' : 'url(#linkGrad)';
+      const dash = l.kind === 'srv' ? '6 6' : '0';
+      return `<line x1="${ca.x}" y1="${ca.y}" x2="${cb.x}" y2="${cb.y}"
+        stroke="${stroke}" stroke-width="${isSel ? 2.6 : 2}" stroke-dasharray="${dash}"
+        opacity="${off ? .25 : .65}" filter="url(#glow)"/>`;
+    }).join('')}
+  `;
+}
+
+/* ============================================================
+   12. RENDER: DEVICE CARDS
+   ============================================================ */
+function renderDevices(){
+  const layer = $('#deviceLayer');
+  const W = $('#canvasWrap').clientWidth;
+  const H = $('#canvasWrap').clientHeight;
+
+  State.pcs.forEach(pc => {
+    const s = cardSize(pc);
+    pc.x = clamp(pc.x, 6, Math.max(6, W - s.w - 6));
+    pc.y = clamp(pc.y, 6, Math.max(6, H - s.h - 6));
+  });
+  State.servers.forEach(sv => {
+    const s = cardSize(sv);
+    sv.x = clamp(sv.x, 6, Math.max(6, W - s.w - 6));
+    sv.y = clamp(sv.y, 6, Math.max(6, H - s.h - 6));
+  });
+
+  let html = '';
+  State.servers.forEach(sv => html += serverCardHTML(sv));
+  State.pcs.forEach(pc => html += pcCardHTML(pc));
+  layer.innerHTML = html;
+  $$('.device').forEach(el => attachDeviceEvents(el));
+}
+
+function serverCardHTML(sv){
+  const isOnline = sv.status === 'ONLINE';
+  const clientCount = State.links.filter(l => l.kind==='pc' && (l.fromId===sv.id||l.toId===sv.id)).length;
+  const sel = State.selectedId === sv.id ? ' selected' : '';
+  const off = isOnline ? '' : ' offline';
+  const role = sv.role === 'PRIMARY' ? 'PRIMARY SERVER' : (sv.type.toUpperCase() + ' SERVER');
+  return `
+    <div class="device server${sel}${off}" data-device-id="${sv.id}" data-kind="server"
+         style="left:${sv.x}px; top:${sv.y}px">
+      <div class="d-head">
+        <div class="d-icon">🖥️</div>
+        <div>
+          <div class="d-name">${sv.name}</div>
+          <div class="d-sub">${role}</div>
+        </div>
+        <button class="d-edit" data-edit="${sv.id}" title="Edit">✎</button>
+      </div>
+      <div class="d-div"></div>
+      <div class="d-statusblock">
+        <span class="dt-status ${isOnline?'online':'offline'}">
+          <span class="sdot"></span>${isOnline?'ONLINE':'OFFLINE'}
+        </span>
+        <span class="dt-sync ${isOnline?'synced':'offline'}">${clientCount} CLIENTS</span>
+      </div>
+      <div class="d-net">
+        <span>${sv.ip}:${sv.port}</span>
+      </div>
+    </div>`;
+}
+
+function pcCardHTML(pc){
+  const isOnline = pc.status === 'ONLINE';
+  const sel = State.selectedId === pc.id ? ' selected' : '';
+  const off = isOnline ? '' : ' offline';
+  const syncCls = pc.syncState === 'SYNCING' ? 'syncing' : (isOnline ? 'synced' : 'offline');
+  const syncLabel = pc.syncState === 'SYNCING' ? '◌ SYNCING' : (isOnline ? '✓ SYNCED' : 'OFFLINE');
+  return `
+    <div class="device${sel}${off}" data-device-id="${pc.id}" data-kind="pc"
+         style="left:${pc.x}px; top:${pc.y}px">
+      <div class="d-head">
+        <div class="d-icon">💻</div>
+        <div>
+          <div class="d-name">${pc.name}</div>
+          <div class="d-sub">${pc.employee}</div>
+        </div>
+        <button class="d-edit" data-edit="${pc.id}" title="Edit">✎</button>
+      </div>
+      <div class="d-div"></div>
+      <div class="d-statusblock">
+        <span class="dt-status ${isOnline?'online':'offline'}">
+          <span class="sdot"></span>${isOnline?'ONLINE':'OFFLINE'}
+        </span>
+        <span class="dt-sync ${syncCls}">${syncLabel}</span>
+      </div>
+      <div class="d-net">
+        <span>${pc.ip}</span>
+      </div>
+    </div>`;
+}
+
+/* ============================================================
+   13. DEVICE INTERACTION
+   ============================================================ */
+function attachDeviceEvents(el){
+  const id = el.dataset.deviceId;
+  const kind = el.dataset.kind;
+  const dev = kind === 'pc' ? State.pcs.find(p=>p.id===id) : State.servers.find(s=>s.id===id);
+  if (!dev) return;
+
+  const editBtn = el.querySelector('[data-edit]');
+  if (editBtn){
+    editBtn.addEventListener('pointerdown', e => e.stopPropagation());
+    editBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      openDeviceEditor(kind, id);
+    });
+  }
+
+  el.addEventListener('dblclick', e => {
+    e.stopPropagation();
+    openDeviceEditor(kind, id);
+  });
+
+  let dragging = false;
+  let moved = false;
+  let startX = 0, startY = 0;
+  let origX = 0, origY = 0;
+  let pointerId = null;
+
+  el.addEventListener('pointerdown', e => {
+    if (e.target.closest('.d-edit')) return;
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    pointerId = e.pointerId;
+    dragging = true;
+    moved = false;
+    startX = e.clientX; startY = e.clientY;
+    origX = dev.x; origY = dev.y;
+    try { el.setPointerCapture(pointerId); } catch(_){}
+    el.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  el.addEventListener('pointermove', e => {
+    if (!dragging || e.pointerId !== pointerId) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) > 5) moved = true;
+    if (!moved) return;
+
+    const W = $('#canvasWrap').clientWidth;
+    const H = $('#canvasWrap').clientHeight;
+    const s = cardSize(dev);
+
+    let nx = origX + dx;
+    let ny = origY + dy;
+    nx = clamp(nx, 6, Math.max(6, W - s.w - 6));
+    ny = clamp(ny, 6, Math.max(6, H - s.h - 6));
+
+    dev.x = nx; dev.y = ny;
+    el.style.left = nx + 'px';
+    el.style.top  = ny + 'px';
+
+    const overlap = checkOverlap(dev);
+    el.classList.toggle('invalid', overlap);
+    renderLinks();
+  });
+
+  const finish = e => {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove('dragging');
+    try { if (pointerId != null) el.releasePointerCapture(pointerId); } catch(_){}
+
+    if (!moved){
+      State.selectedId = (State.selectedId === id) ? null : id;
+      renderDevices(); renderLinks();
+      openPicker(kind, id);
+    } else {
+      if (checkOverlap(dev)){
+        const fixed = findFreePosition(dev);
+        dev.x = fixed.x; dev.y = fixed.y;
+      }
+      el.classList.remove('invalid');
+      renderDevices(); renderLinks();
+      save();
+    }
+  };
+  el.addEventListener('pointerup', finish);
+  el.addEventListener('pointercancel', () => {
+    dragging = false;
+    el.classList.remove('dragging','invalid');
+  });
+}
+
+function checkOverlap(dev){
+  const s1 = cardSize(dev);
+  const others = [...State.pcs, ...State.servers].filter(d => d.id !== dev.id);
+  for (const o of others){
+    const s2 = cardSize(o);
+    if (dev.x < o.x + s2.w && dev.x + s1.w > o.x &&
+        dev.y < o.y + s2.h && dev.y + s1.h > o.y){
+      return true;
+    }
+  }
+  return false;
+}
+
+function findFreePosition(dev){
+  const W = $('#canvasWrap').clientWidth;
+  const H = $('#canvasWrap').clientHeight;
+  const s = cardSize(dev);
+  const ox = dev.x, oy = dev.y;
+  for (let r = 16; r < 600; r += 20){
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 6){
+      const nx = clamp(ox + Math.cos(a) * r, 6, W - s.w - 6);
+      const ny = clamp(oy + Math.sin(a) * r, 6, H - s.h - 6);
+      const test = { ...dev, x:nx, y:ny };
+      if (!checkOverlap(test)) return { x:nx, y:ny };
+    }
+  }
+  return { x:ox, y:oy };
+}
+
+/* ============================================================
+   14. PACKET
+   ============================================================ */
+class Packet {
+  constructor({ fromId, toId, type, label, sub, color='sale', payload }){
+    this.id = 'PKT-' + Math.floor(Math.random()*9000+1000);
+    this.fromId = fromId;
+    this.toId = toId;
+    this.type = type;
+    this.label = label;
+    this.sub = sub;
+    this.color = color;
+    this.payload = payload || {};
+    this.status = 'IN_TRANSIT';
+    this.latency = 0;
+    this.durationBase = 900;
+    this.group = null;
+    this.lane = 0;
+    this.createdAt = now();
+  }
+
+  assignLane(){
+    const key = [this.fromId, this.toId].sort().join('|');
+    Packet.lanes = Packet.lanes || {};
+    const t = performance.now();
+    Packet.lanes[key] = (Packet.lanes[key] || []).filter(x => x.until > t);
+    this.lane = Packet.lanes[key].length;
+    Packet.lanes[key].push({ id:this.id, until: t + this.durationBase / ANIM_SPEED + 400 });
+  }
+
+  createSVG(){
+    const line1 = this.label;
+    const line2 = this.sub || '';
+    // Responsive packet card sizing
+    const vw = window.innerWidth;
+    const factor = vw <= 600 ? 6.2 : vw <= 900 ? 7 : 7.5;
+    const minW = vw <= 600 ? 96 : 110;
+    const maxW = vw <= 600 ? 150 : 180;
+    const w = clamp(Math.max(line1.length, line2.length) * factor + 30, minW, maxW);
+    const h = vw <= 600 ? 44 : 52;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'packet-g');
+    g.dataset.packetId = this.id;
+
+    const colorMap = {
+      sale: { border:'#3ba8ff', text:'#a8d0ff' },
+      sync: { border:'#8b5cff', text:'#c0a6ff' },
+      ack:  { border:'#2ee6a6', text:'#a8ffe0' },
+      err:  { border:'#ff5c7a', text:'#ffb8c6' }
+    };
+    const c = colorMap[this.color] || colorMap.sale;
+    const fs1 = vw <= 600 ? 11 : 12.5;
+    const fs2 = vw <= 600 ? 9 : 10;
+
+    g.innerHTML = `
+      <rect x="${-w/2}" y="${-h/2}" width="${w}" height="${h}" rx="10"
+        fill="rgba(10,16,32,.96)" stroke="${c.border}" stroke-width="1.6"
+        filter="url(#glow)"/>
+      <text x="0" y="${h <= 44 ? -4 : -6}" text-anchor="middle"
+        fill="${c.text}" font-size="${fs1}" font-weight="700" font-family="Inter,sans-serif"
+        letter-spacing=".4">${line1}</text>
+      <text x="0" y="${h <= 44 ? 10 : 11}" text-anchor="middle"
+        fill="#93a0c7" font-size="${fs2}" font-family="'JetBrains Mono',monospace">${line2}</text>
+    `;
+
+    g.style.pointerEvents = 'auto';
+    g.style.cursor = 'pointer';
+    g.addEventListener('click', e => {
+      e.stopPropagation();
+      showPacketPop(this, e.clientX, e.clientY);
+    });
+
+    $('#packetSvg').appendChild(g);
+    this.group = g;
+  }
+
+  computeLaneOffset(ax, ay, bx, by){
+    const dx = bx - ax, dy = by - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    const px = -dy / len, py = dx / len;
+    const spacing = window.innerWidth <= 600 ? 16 : 22;
+    const sign = (this.lane % 2 === 0) ? 1 : -1;
+    const mag = Math.ceil(this.lane / 2);
+    return { x: px * spacing * sign * mag, y: py * spacing * sign * mag };
+  }
+
+  async travel(){
+    const start = performance.now();
+    const self = this;
+    await new Promise(res => {
+      function frame(t){
+        const p = Math.min(1, (t - start) / (self.durationBase / ANIM_SPEED));
+        const a = findDevice(self.fromId);
+        const b = findDevice(self.toId);
+        if (!a || !b || !self.group){ res(); return; }
+        const ca = deviceCenter(a);
+        const cb = deviceCenter(b);
+        const off = self.computeLaneOffset(ca.x, ca.y, cb.x, cb.y);
+        const x = ca.x + (cb.x - ca.x) * p + off.x;
+        const y = ca.y + (cb.y - ca.y) * p + off.y;
+        self.group.setAttribute('transform', `translate(${x} ${y})`);
+        if (p < 1) requestAnimationFrame(frame);
+        else res();
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  destroy(){
+    if (this.group){
+      this.group.style.transition = 'opacity .3s';
+      this.group.style.opacity = '0';
+      setTimeout(() => this.group && this.group.remove(), 320);
+      this.group = null;
+    }
+  }
+}
+
+/* ============================================================
+   15. PACKET POPUP
+   ============================================================ */
+function showPacketPop(pkt, x, y){
+  document.querySelector('.pkt-pop')?.remove();
+  const pop = document.createElement('div');
+  pop.className = 'pkt-pop';
+  const vw = window.innerWidth;
+  const w = Math.min(340, vw - 24);
+  pop.style.left = clamp(x + 14, 12, vw - w - 12) + 'px';
+  pop.style.top  = Math.min(window.innerHeight - 280, y + 10) + 'px';
+
+  const from = findDevice(pkt.fromId);
+  const to   = findDevice(pkt.toId);
+  const rows = [
+    ['Type', pkt.type],
+    ['Source', from ? `${from.name}<br/><span style="color:var(--dim);font-weight:500">${from.ip||''}</span>` : '?'],
+    ['Destination', to ? `${to.name}<br/><span style="color:var(--dim);font-weight:500">${to.ip||''}</span>` : '?'],
+    ['Product', pkt.payload.product || '—'],
+    ['Quantity', pkt.payload.qty != null ? pkt.payload.qty : '—'],
+    ['Protocol', State.proto],
+    ['Latency', pkt.latency + ' ms'],
+    ['Status', pkt.status]
+  ].map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+
+  pop.innerHTML = `
+    <h4>Packet · ${pkt.id} <button>✕</button></h4>
+    <div class="ptype">${pkt.type}</div>
+    <table>${rows}</table>
+  `;
+  pop.querySelector('button').onclick = () => pop.remove();
+  document.body.appendChild(pop);
+  setTimeout(() => pop.remove(), 5000);
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.pkt-pop') && !e.target.closest('.packet-g')) {
+    document.querySelector('.pkt-pop')?.remove();
+  }
+});
+
+/* ============================================================
+   16. SEND PACKET
+   ============================================================ */
+async function sendPacket(opts){
+  const from = findDevice(opts.fromId);
+  const to   = findDevice(opts.toId);
+  if (!from || !to) return { ok:false };
+
+  const effLatency = Math.round((opts.latency || State.conditions.latency));
+  const lossChance = State.conditions.loss / 100;
+
+  const pkt = new Packet({
+    fromId: from.id, toId: to.id,
+    type: opts.type,
+    label: opts.label || opts.type,
+    sub: opts.sub || `${from.name} → ${to.name}`,
+    color: opts.color || 'sale',
+    payload: opts.payload
+  });
+  pkt.durationBase = Math.max(500, effLatency + 400);
+  pkt.latency = effLatency;
+  pkt.assignLane();
+  pkt.createSVG();
+  State.packets.push(pkt);
+  State.stats.sent++;
+  UI.chips();
+
+  Feed.push(`<b>${from.name}</b> → ${opts.type}`, 'sys');
+
+  await pkt.travel();
+
+  if (Math.random() < lossChance){
+    pkt.status = 'LOST';
+    State.stats.lost++;
+    Feed.push(`✕ ${opts.type} LOST (${from.name} → ${to.name})`, 'err');
+    pkt.destroy();
+    UI.chips();
+    if (State.proto === 'TCP'){
+      State.stats.retx++;
+      await new Promise(r => setTimeout(r, 400 / ANIM_SPEED));
+      return sendPacket(opts);
+    }
+    return { ok:false };
+  }
+
+  pkt.status = 'DELIVERED';
+  State.stats.delivered++;
+  State.lastLatency = effLatency;
+  const toEl = document.querySelector(`[data-device-id="${to.id}"]`);
+  if (toEl){
+    toEl.classList.add('flash-ok');
+    setTimeout(() => toEl.classList.remove('flash-ok'), 700);
+  }
+  pkt.destroy();
+  UI.chips();
+  return { ok:true, pkt };
+}
+
+/* ============================================================
+   17. HIGH-LEVEL OPS
+   ============================================================ */
+async function sell(pcId, productId, qty){
+  const pc = State.pcs.find(p => p.id === pcId);
+  const prod = State.products.find(p => p.id === productId);
+  if (!pc || !prod) return;
+  if (pc.status === 'OFFLINE'){ toast(`${pc.name} is offline`, 'error'); return; }
+  if (!State.server || State.server.status === 'OFFLINE'){ toast('Primary server offline', 'error'); return; }
+  if (qty <= 0){ toast('Invalid quantity', 'error'); return; }
+
+  const currentServerStock = State.server.inventory[productId] || 0;
+  if (currentServerStock < qty){
+    toast(`Insufficient stock: have ${currentServerStock}`, 'error');
+    Feed.push(`✕ ${pc.name}: insufficient ${prod.name}`, 'err');
+    return;
+  }
+
+  Feed.push(`<b>${pc.name}</b> (${pc.employee}) sold ${qty}× ${prod.name}`, 'sys');
+
+  if (State.proto === 'TCP'){
+    await sendPacket({ fromId: pc.id, toId: State.server.id, type:'SYN', color:'sync', label:'SYN', sub:'Handshake' });
+    await sendPacket({ fromId: State.server.id, toId: pc.id, type:'SYN-ACK', color:'sync', label:'SYN-ACK', sub:'Reply' });
+    await sendPacket({ fromId: pc.id, toId: State.server.id, type:'ACK', color:'ack', label:'ACK', sub:'Done' });
+  }
+
+  pc.syncState = 'SYNCING';
+  renderDevices();
+
+  const req = await sendPacket({
+    fromId: pc.id, toId: State.server.id,
+    type:'SALE_REQUEST', color:'sale',
+    label:'SALE REQUEST', sub:`${pc.name} → SERVER`,
+    payload: { product: prod.name, qty }
+  });
+  if (!req.ok){ pc.syncState = 'SYNCED'; renderDevices(); return; }
+
+  await new Promise(r => setTimeout(r, 380 / ANIM_SPEED));
+  const stock = State.server.inventory[productId] || 0;
+  if (stock < qty){
+    await sendPacket({
+      fromId: State.server.id, toId: pc.id,
+      type:'NACK', color:'err',
+      label:'REJECTED', sub:'Insufficient stock',
+      payload: { product: prod.name }
+    });
+    pc.syncState = 'SYNCED'; renderDevices();
+    Feed.push(`✕ Server rejected ${pc.name}`, 'err');
+    return;
+  }
+
+  const oldStock = stock;
+  const newStock = stock - qty;
+  State.server.inventory[productId] = newStock;
+  State.stats.tx++;
+  UI.renderInventory({ flashId: productId, delta: -qty });
+  Feed.push(`✓ Server inventory: <b>${prod.name}</b> ${oldStock} → ${newStock}`, 'ok');
+
+  await sendPacket({
+    fromId: State.server.id, toId: pc.id,
+    type:'ACK', color:'ack',
+    label:'ACK', sub:`${prod.name} · ${newStock}`,
+    payload: { product: prod.name }
+  });
+  pc.inventory[productId] = newStock;
+  pc.syncState = 'SYNCED';
+  renderDevices();
+
+  const others = State.pcs.filter(p => p.id !== pc.id && p.status === 'ONLINE');
+  if (others.length){
+    Feed.push(`🔄 Broadcasting to ${others.length} client${others.length>1?'s':''}`, 'sys');
+    State.syncing += others.length;
+    others.forEach(o => { o.syncState = 'SYNCING'; });
+    renderDevices(); UI.chips();
+
+    await Promise.all(others.map(other => (async () => {
+      const res = await sendPacket({
+        fromId: State.server.id, toId: other.id,
+        type:'INVENTORY_UPDATE', color:'sync',
+        label:'INVENTORY UPDATE', sub:`SERVER → ${other.name}`,
+        payload: { product: prod.name, qty: newStock }
+      });
+      if (res.ok){
+        other.inventory[productId] = newStock;
+        other.syncState = 'SYNCED';
+        renderDevices();
+        Feed.push(`✓ <b>${other.name}</b> synchronized`, 'ok');
+      }
+      State.syncing = Math.max(0, State.syncing - 1);
+      UI.chips();
+    })()));
+    Feed.push(`✓ Synchronized · ${prod.name} = ${newStock}`, 'ok');
+  }
+  toast(`✓ ${pc.name} sold ${qty}× ${prod.name}`, 'success');
+}
+
+async function adminSetStock(productId, newStock){
+  const prod = State.products.find(p => p.id === productId);
+  if (!prod || !State.server) return;
+  if (newStock < 0){ toast('Stock cannot be negative', 'error'); return; }
+  const old = State.server.inventory[productId] || 0;
+  if (newStock === old){ toast('No change', 'warn'); return; }
+
+  State.server.inventory[productId] = newStock;
+  UI.renderInventory({ flashId: productId, delta: newStock - old });
+  Feed.push(`⚙ Admin set <b>${prod.name}</b>: ${old} → ${newStock}`, 'sys');
+
+  const targets = State.pcs.filter(p => p.status === 'ONLINE');
+  targets.forEach(pc => { pc.syncState = 'SYNCING'; });
+  renderDevices();
+
+  await Promise.all(targets.map(pc => (async () => {
+    const res = await sendPacket({
+      fromId: State.server.id, toId: pc.id,
+      type:'INVENTORY_UPDATE', color:'sync',
+      label:'INVENTORY UPDATE', sub:`SERVER → ${pc.name}`,
+      payload: { product: prod.name, qty: newStock }
+    });
+    if (res.ok){
+      pc.inventory[productId] = newStock;
+      pc.syncState = 'SYNCED';
+      renderDevices();
+      Feed.push(`✓ <b>${pc.name}</b> synchronized`, 'ok');
+    }
+  })()));
+}
+
+async function addPc({ name, employee, ip }){
+  if (State.pcs.find(p => p.ip === ip)){ toast(`Duplicate IP: ${ip}`, 'error'); return; }
+  const W = $('#canvasWrap').clientWidth, H = $('#canvasWrap').clientHeight;
+  const pSize = cardSize({});
+  const pc = {
+    id: uid('pc'), name, employee, ip, port:5001,
+    status:'ONLINE', inventory:{}, syncState:'SYNCING',
+    x: W/2 - pSize.w/2 + (Math.random()-0.5) * 120,
+    y: H - pSize.h - 20 + (Math.random()-0.5) * 40
+  };
+  State.pcs.push(pc);
+  State.links.push({ id: uid('lnk'), fromId: pc.id, toId: State.server.id, kind:'pc' });
+  Feed.push(`⚙ ${pc.name} (${pc.employee}) joined network`, 'sys');
+  renderDevices(); renderLinks(); UI.chips();
+
+  const res = await sendPacket({
+    fromId: State.server.id, toId: pc.id,
+    type:'INITIAL_SYNC', color:'sync',
+    label:'INITIAL SYNC', sub:`SERVER → ${pc.name}`,
+    payload: { product: 'all' }
+  });
+  if (res.ok){
+    pc.inventory = { ...State.server.inventory };
+    pc.syncState = 'SYNCED';
+    renderDevices();
+    Feed.push(`✓ <b>${pc.name}</b> synchronized`, 'ok');
+  }
+  save();
+}
+
+async function addServer({ name, ip, port, type }){
+  if (State.servers.find(s => s.ip === ip)){ toast(`Duplicate IP: ${ip}`, 'error'); return; }
+  const W = $('#canvasWrap').clientWidth, H = $('#canvasWrap').clientHeight;
+  const sSize = cardSize({ role:'PRIMARY' });
+  const srv = {
+    id: uid('srv'), name, ip, port, type,
+    role: 'BACKUP', status:'ONLINE',
+    x: W/2 - sSize.w/2 + (Math.random()-0.5) * 120,
+    y: H - sSize.h - 20 + (Math.random()-0.5) * 40
+  };
+  State.servers.push(srv);
+  State.links.push({ id: uid('lnk'), fromId: srv.id, toId: State.server.id, kind:'srv' });
+  Feed.push(`⚙ ${srv.name} (${type}) linked`, 'sys');
+  renderDevices(); renderLinks(); UI.chips();
+
+  await sendPacket({
+    fromId: State.server.id, toId: srv.id,
+    type:'NETWORK_LINK', color:'sync',
+    label:'NETWORK LINK', sub:`${State.server.name} → ${srv.name}`,
+    payload: {}
+  });
+  save();
+}
+
+function removePc(id){
+  const pc = State.pcs.find(p => p.id === id); if (!pc) return;
+  State.pcs = State.pcs.filter(p => p.id !== id);
+  State.links = State.links.filter(l => l.fromId !== id && l.toId !== id);
+  Feed.push(`⚙ ${pc.name} removed`, 'warn');
+  renderDevices(); renderLinks(); UI.chips(); save();
+}
+
+function removeServer(id){
+  const srv = State.servers.find(s => s.id === id); if (!srv) return;
+  const isPrimary = srv.role === 'PRIMARY';
+  State.servers = State.servers.filter(s => s.id !== id);
+  State.links = State.links.filter(l => l.fromId !== id && l.toId !== id);
+  Feed.push(`⚙ ${srv.name} removed`, 'warn');
+  if (isPrimary){
+    State.server = State.servers.find(s => s.role === 'PRIMARY') || null;
+    if (!State.server){
+      Feed.push(`⚠ NO PRIMARY SERVER · transactions blocked`, 'err');
+      toast('⚠ No primary server', 'error');
+    }
+  }
+  renderDevices(); renderLinks(); UI.chips(); UI.updateStatusPill(); save();
+}
+
+async function takePcOffline(id){
+  const pc = State.pcs.find(p => p.id === id); if (!pc) return;
+  pc.status = 'OFFLINE';
+  Feed.push(`⚙ ${pc.name} OFFLINE`, 'warn');
+  renderDevices(); renderLinks(); UI.chips(); save();
+}
+async function bringPcOnline(id){
+  const pc = State.pcs.find(p => p.id === id); if (!pc) return;
+  pc.status = 'ONLINE';
+  pc.syncState = 'SYNCING';
+  Feed.push(`⚙ ${pc.name} ONLINE · resyncing`, 'sys');
+  renderDevices(); renderLinks();
+
+  const res = await sendPacket({
+    fromId: State.server.id, toId: pc.id,
+    type:'INITIAL_SYNC', color:'sync',
+    label:'INITIAL SYNC', sub:`SERVER → ${pc.name}`,
+    payload: { product: 'all' }
+  });
+  if (res.ok){
+    pc.inventory = { ...State.server.inventory };
+    pc.syncState = 'SYNCED';
+    renderDevices();
+    Feed.push(`✓ ${pc.name} restored`, 'ok');
+  }
+  save();
+}
+
+/* ============================================================
+   18. UI
+   ============================================================ */
+const UI = {
+  renderInventory(opts={}){
+    const grid = $('#invGrid');
+    if (!State.server){
+      grid.innerHTML = '<div style="color:var(--red);padding:20px;text-align:center">⚠ No primary server</div>';
+      return;
+    }
+    const items = Object.entries(State.server.inventory).map(([pid, stock]) => {
+      const p = State.products.find(x => x.id === pid);
+      if (!p) return '';
+      const deltaHtml = (opts.flashId === pid && opts.delta != null)
+        ? `<span class="delta ${opts.delta>0?'up':'down'}">${opts.delta>0?'↑ +'+opts.delta:'↓ '+opts.delta}</span>`
+        : '';
+      return `
+        <div class="inv-card ${opts.flashId===pid?'updating':''}" data-prod="${pid}">
+          <div class="icon">${p.icon}</div>
+          <div class="cat">${p.category}</div>
+          <div class="name" title="${p.name}">${p.name}</div>
+          <div class="row">
+            <div>
+              <div class="stock-lbl">Stock</div>
+              <div><span class="stock-val" data-stock="${pid}">${stock}</span> ${deltaHtml}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="stock-lbl">Price</div>
+              <div class="price">₹${p.price.toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button data-edit="${pid}">Edit Stock</button>
+            <button class="danger" data-del="${pid}">Remove</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    grid.innerHTML = items + `
+      <div class="add-card" id="addCard"><div class="plus">+</div><div>Add Product</div></div>`;
+
+    $$('#invGrid [data-edit]').forEach(b => b.onclick = () => editStockModal(b.dataset.edit));
+    $$('#invGrid [data-del]').forEach(b => b.onclick = () => removeProduct(b.dataset.del));
+    $('#addCard').onclick = addProductModal;
+
+    if (opts.flashId){
+      setTimeout(() => {
+        const el = grid.querySelector(`[data-prod="${opts.flashId}"] .delta`);
+        if (el) el.style.opacity = '0';
+      }, 1500 / ANIM_SPEED);
+    }
+  },
+
+  chips(){
+    $('#chipConn').textContent = State.pcs.filter(p => p.status==='ONLINE').length;
+    $('#chipPkts').textContent = State.packets.length;
+    $('#chipLat').textContent = State.lastLatency ? State.lastLatency + 'ms' : '—';
+    const online = State.pcs.filter(p => p.status==='ONLINE').length;
+    const total = State.pcs.length;
+    const sync = total === 0 ? 100 : (State.syncing === 0 && online === total ? 100 : Math.max(0, Math.round(100 - (State.syncing * 100 / Math.max(1, total)))));
+    $('#chipSync').textContent = sync + '%';
+    $('#syncDot').style.background = sync === 100 ? 'var(--green)' : 'var(--amber)';
+    $('#syncDot').style.boxShadow = `0 0 8px ${sync === 100 ? 'var(--green)' : 'var(--amber)'}`;
+    $('#chipSrvs').textContent = State.servers.length;
+
+    $('#totSent').textContent = State.stats.sent;
+    $('#totOk').textContent = State.stats.delivered;
+    $('#totLost').textContent = State.stats.lost;
+    $('#totRe').textContent = State.stats.retx;
+    $('#totTx').textContent = State.stats.tx;
+    UI.updateStatusPill();
+  },
+
+  updateStatusPill(){
+    const pill = $('#netStatus'), txt = $('#netStatusText');
+    const srvOffline = !State.server || State.server.status === 'OFFLINE';
+    if (srvOffline){ pill.classList.add('offline'); txt.textContent = 'NETWORK OFFLINE'; }
+    else { pill.classList.remove('offline'); txt.textContent = 'NETWORK ONLINE'; }
+  }
+};
+
+/* ============================================================
+   19. DEVICE PICKER
+   ============================================================ */
+function openPicker(kind, id){
+  const isSrv = kind === 'server';
+  const dev = isSrv ? State.servers.find(s => s.id === id) : State.pcs.find(p => p.id === id);
+  if (!dev) return;
+
+  $('#pkHeader').textContent = isSrv ? 'SERVER' : 'PC DETAILS';
+  $('#pkName').textContent = dev.name;
+  $('#pkSub').textContent = isSrv ? (dev.role === 'PRIMARY' ? 'Primary Server' : dev.type + ' Server') : dev.employee;
+
+  const isOnline = dev.status === 'ONLINE';
+
+  let invHtml = '';
+  if (isSrv){
+    invHtml = Object.entries(dev.inventory).slice(0, 8).map(([pid, stock]) => {
+      const p = State.products.find(x => x.id === pid); if (!p) return '';
+      return `<div class="pk-inv"><span class="pn">${p.icon} <span>${p.name}</span></span><span class="pv">${stock}</span></div>`;
+    }).join('');
+  } else {
+    const keys = Object.keys(dev.inventory).slice(0, 8);
+    invHtml = keys.map(pid => {
+      const p = State.products.find(x => x.id === pid); if (!p) return '';
+      return `<div class="pk-inv"><span class="pn">${p.icon} <span>${p.name}</span></span><span class="pv">${dev.inventory[pid]}</span></div>`;
+    }).join('') || '<div style="color:var(--dim);font-size:12px;text-align:center;padding:12px">No inventory</div>';
+  }
+
+  const body = `
+    <div class="pk-sec">
+      <h4>Network</h4>
+      <div class="pk-kv"><span>Status</span><b class="${isOnline?'green':'red'}">${isOnline?'ONLINE':'OFFLINE'}</b></div>
+      <div class="pk-kv"><span>IP</span><b>${dev.ip}</b></div>
+      <div class="pk-kv"><span>Port</span><b>${dev.port}</b></div>
+      ${!isSrv ? `<div class="pk-kv"><span>Sync</span><b class="${dev.syncState==='SYNCED'?'green':'amber'}">${dev.syncState}</b></div>` : ''}
+    </div>
+    <div class="pk-sec">
+      <h4>${isSrv ? 'Inventory' : 'Local Inventory'}</h4>
+      ${invHtml}
+    </div>
+    <div class="pk-actions">
+      ${!isSrv ? `<button class="btn btn-success btn-block" id="pkSell">📦 Sell Product</button>` : ''}
+      <button class="btn btn-primary btn-block" id="pkEdit">✎ Edit ${isSrv?'Server':'PC'}</button>
+      ${!isSrv ? `<button class="btn btn-secondary btn-block" id="pkToggle">${isOnline?'Set Offline':'Bring Online'}</button>` : `<button class="btn btn-secondary btn-block" id="pkToggle">${isOnline?'Shutdown':'Start'}</button>`}
+      <button class="btn btn-danger btn-block" id="pkRemove">Remove</button>
+    </div>
+  `;
+  $('#pkBody').innerHTML = body;
+  $('#picker').classList.add('open');
+
+  $('#pkEdit').onclick = () => { openDeviceEditor(kind, id); };
+  $('#pkToggle').onclick = () => {
+    if (isSrv){
+      dev.status = isOnline ? 'OFFLINE' : 'ONLINE';
+      Feed.push(`⚙ ${dev.name} → ${dev.status}`, 'warn');
+      renderDevices(); renderLinks(); UI.chips(); save();
+      openPicker(kind, id);
+    } else {
+      isOnline ? takePcOffline(id) : bringPcOnline(id);
+      setTimeout(() => openPicker(kind, id), 100);
+    }
+  };
+  $('#pkRemove').onclick = () => {
+    if (isSrv && dev.role === 'PRIMARY'){
+      confirmModal('<b style="color:var(--red)">PRIMARY SERVER</b><br/><br/>This server owns the authoritative inventory. Are you sure?', () => {
+        removeServer(id); closePicker();
+      });
+    } else {
+      confirmModal(`Remove ${dev.name}?`, () => {
+        isSrv ? removeServer(id) : removePc(id);
+        closePicker();
+      });
+    }
+  };
+  if (!isSrv){
+    $('#pkSell').onclick = () => { closePicker(); sellModal(id); };
+  }
+}
+function closePicker(){ $('#picker').classList.remove('open'); }
+
+/* ============================================================
+   20. DEVICE EDITOR
+   ============================================================ */
+function openDeviceEditor(kind, id){
+  const isSrv = kind === 'server';
+  const dev = isSrv ? State.servers.find(s => s.id === id) : State.pcs.find(p => p.id === id);
+  if (!dev) return;
+
+  const statusOpts = `
+    <option ${dev.status==='ONLINE'?'selected':''}>ONLINE</option>
+    <option ${dev.status==='OFFLINE'?'selected':''}>OFFLINE</option>`;
+
+  if (isSrv){
+    openModal({
+      title: 'Edit Server',
+      html: `
+        <label class="lbl">Server Name</label>
+        <input class="input" id="edName" value="${dev.name}"/>
+        <label class="lbl">IP Address</label>
+        <input class="input" id="edIp" value="${dev.ip}"/>
+        <label class="lbl">Port</label>
+        <input class="input" type="number" id="edPort" value="${dev.port}"/>
+        <label class="lbl">Server Type</label>
+        <select class="input" id="edType">
+          <option value="Inventory" ${dev.type==='Inventory'?'selected':''}>Inventory Server</option>
+          <option value="Backup" ${dev.type==='Backup'?'selected':''}>Backup Server</option>
+          <option value="Database" ${dev.type==='Database'?'selected':''}>Database Server</option>
+        </select>
+        <label class="lbl">Status</label>
+        <select class="input" id="edStatus">${statusOpts}</select>
+      `,
+      actions: [
+        { label:'Cancel', fn: closeModal },
+        { label:'Save', cls:'primary', fn: () => {
+          const name = $('#edName').value.trim();
+          const ip = $('#edIp').value.trim();
+          const port = parseInt($('#edPort').value,10) || dev.port;
+          const type = $('#edType').value;
+          const status = $('#edStatus').value;
+          if (!name || !ip){ toast('Name and IP required', 'error'); return; }
+          const dup = State.servers.find(s => s.id !== id && s.ip === ip);
+          if (dup){ toast(`Duplicate IP: ${ip}`, 'error'); return; }
+          dev.name = name; dev.ip = ip; dev.port = port; dev.type = type; dev.status = status;
+          Feed.push(`⚙ Server <b>${dev.name}</b> updated`, 'sys');
+          closeModal();
+          renderDevices(); renderLinks(); UI.chips(); UI.updateStatusPill(); save();
+        }}
+      ]
+    });
+  } else {
+    openModal({
+      title: 'Edit Computer',
+      html: `
+        <label class="lbl">PC Name</label>
+        <input class="input" id="edName" value="${dev.name}"/>
+        <label class="lbl">Employee</label>
+        <input class="input" id="edEmp" value="${dev.employee}"/>
+        <label class="lbl">IP Address</label>
+        <input class="input" id="edIp" value="${dev.ip}"/>
+        <label class="lbl">Port</label>
+        <input class="input" type="number" id="edPort" value="${dev.port}"/>
+        <label class="lbl">Status</label>
+        <select class="input" id="edStatus">${statusOpts}</select>
+      `,
+      actions: [
+        { label:'Cancel', fn: closeModal },
+        { label:'Save', cls:'primary', fn: () => {
+          const name = $('#edName').value.trim();
+          const employee = $('#edEmp').value.trim();
+          const ip = $('#edIp').value.trim();
+          const port = parseInt($('#edPort').value,10) || dev.port;
+          const status = $('#edStatus').value;
+          if (!name || !ip){ toast('Name and IP required', 'error'); return; }
+          const dup = State.pcs.find(p => p.id !== id && p.ip === ip);
+          if (dup){ toast(`Duplicate IP: ${ip}`, 'error'); return; }
+          dev.name = name; dev.employee = employee; dev.ip = ip; dev.port = port;
+          const wasOnline = dev.status;
+          dev.status = status;
+          Feed.push(`⚙ <b>${dev.name}</b> updated`, 'sys');
+          closeModal();
+          renderDevices(); renderLinks(); UI.chips(); save();
+          if (wasOnline === 'OFFLINE' && status === 'ONLINE'){
+            bringPcOnline(id);
+          }
+        }}
+      ]
+    });
+  }
+}
+
+/* ============================================================
+   21. MODALS
+   ============================================================ */
+function openModal({ title, html, actions }){
+  closeModal();
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back.id = 'modalBackRoot';
+  back.innerHTML = `
+    <div class="modal">
+      <h3>${title}</h3>
+      <div>${html}</div>
+      <div class="modal-actions"></div>
+    </div>`;
+  const actWrap = back.querySelector('.modal-actions');
+  (actions||[]).forEach(a => {
+    const b = document.createElement('button');
+    b.className = a.cls || '';
+    b.textContent = a.label;
+    b.onclick = a.fn;
+    actWrap.appendChild(b);
+  });
+  back.addEventListener('click', e => { if (e.target === back) closeModal(); });
+  document.body.appendChild(back);
+}
+function closeModal(){ document.getElementById('modalBackRoot')?.remove(); }
+
+function confirmModal(msg, onYes){
+  openModal({
+    title:'Confirm',
+    html:`<p style="color:var(--dim);font-size:13.5px;line-height:1.7">${msg}</p>`,
+    actions:[
+      { label:'Cancel', fn: closeModal },
+      { label:'Yes, proceed', cls:'danger', fn: () => { closeModal(); onYes(); }}
+    ]
+  });
+}
+
+function sellModal(pcId){
+  const pc = State.pcs.find(p => p.id === pcId); if (!pc) return;
+  if (pc.status === 'OFFLINE'){ toast(`${pc.name} is offline`, 'error'); return; }
+  const prodOpts = State.products.map(p => {
+    const s = State.server?.inventory?.[p.id] || 0;
+    return `<option value="${p.id}">${p.icon} ${p.name} — ₹${p.price.toLocaleString('en-IN')} (stock: ${s})</option>`;
+  }).join('');
+  openModal({
+    title: `${pc.name} — ${pc.employee}`,
+    html: `
+      <label class="lbl">Product</label>
+      <select class="input" id="smProd">${prodOpts}</select>
+      <label class="lbl">Quantity</label>
+      <input class="input" type="number" id="smQty" value="1" min="1" max="99"/>
+    `,
+    actions: [
+      { label:'Cancel', fn: closeModal },
+      { label:'Confirm Sale', cls:'primary', fn: async () => {
+        const pid = $('#smProd').value;
+        const qty = parseInt($('#smQty').value, 10) || 1;
+        closeModal();
+        await sell(pcId, pid, qty);
+      }}
+    ]
+  });
+}
+
+function editStockModal(pid){
+  const p = State.products.find(x => x.id === pid); if (!p) return;
+  const cur = State.server?.inventory?.[pid] || 0;
+  openModal({
+    title: `Edit ${p.name}`,
+    html: `
+      <label class="lbl">Product Name</label>
+      <input class="input" id="esName" value="${p.name}"/>
+      <label class="lbl">Category</label>
+      <input class="input" id="esCat" value="${p.category}"/>
+      <label class="lbl">Price (₹)</label>
+      <input class="input" type="number" id="esPrice" value="${p.price}"/>
+      <label class="lbl">Server Stock</label>
+      <input class="input" type="number" id="esStock" value="${cur}" min="0"/>
+    `,
+    actions: [
+      { label:'Cancel', fn: closeModal },
+      { label:'Save & Broadcast', cls:'primary', fn: async () => {
+        p.name = $('#esName').value.trim() || p.name;
+        p.category = $('#esCat').value.trim() || p.category;
+        p.price = parseFloat($('#esPrice').value) || p.price;
+        const newStock = parseInt($('#esStock').value, 10);
+        closeModal();
+        UI.renderInventory();
+        await adminSetStock(p.id, newStock);
+      }}
+    ]
+  });
+}
+
+function addProductModal(){
+  openModal({
+    title:'Add Product',
+    html: `
+      <label class="lbl">Product Name</label>
+      <input class="input" id="apName" value="New Product"/>
+      <label class="lbl">Category</label>
+      <input class="input" id="apCat" value="General"/>
+      <label class="lbl">Price (₹)</label>
+      <input class="input" type="number" id="apPrice" value="9999"/>
+      <label class="lbl">Initial Stock</label>
+      <input class="input" type="number" id="apStock" value="10" min="0"/>
+      <label class="lbl">Icon (emoji)</label>
+      <input class="input" id="apIcon" value="📦"/>
+    `,
+    actions: [
+      { label:'Cancel', fn: closeModal },
+      { label:'Add & Sync', cls:'primary', fn: async () => {
+        const data = {
+          name: $('#apName').value.trim() || 'New Product',
+          category: $('#apCat').value.trim() || 'General',
+          price: parseFloat($('#apPrice').value) || 0,
+          stock: Math.max(0, parseInt($('#apStock').value,10) || 0),
+          icon: $('#apIcon').value.trim() || '📦'
+        };
+        closeModal();
+        await addProduct(data);
+      }}
+    ]
+  });
+}
+
+async function addProduct(data){
+  const id = uid('p');
+  State.products.push({ id, ...data });
+  State.server.inventory[id] = data.stock;
+  Feed.push(`⚙ Added product <b>${data.name}</b>`, 'sys');
+  UI.renderInventory(); renderDevices();
+
+  const targets = State.pcs.filter(p => p.status === 'ONLINE');
+  await Promise.all(targets.map(pc => (async () => {
+    const res = await sendPacket({
+      fromId: State.server.id, toId: pc.id,
+      type:'PRODUCT_ADDED', color:'sync',
+      label:'NEW PRODUCT', sub:`SERVER → ${pc.name}`,
+      payload: { product: data.name, qty: data.stock }
+    });
+    if (res.ok){
+      pc.inventory[id] = data.stock;
+      renderDevices();
+    }
+  })()));
+  save();
+}
+
+async function removeProduct(productId){
+  const prod = State.products.find(p => p.id === productId); if (!prod) return;
+  confirmModal(`Remove <b>${prod.name}</b> from all devices?`, async () => {
+    delete State.server.inventory[productId];
+    State.products = State.products.filter(p => p.id !== productId);
+    Feed.push(`⚙ Removed product <b>${prod.name}</b>`, 'sys');
+    UI.renderInventory(); renderDevices();
+
+    const targets = State.pcs.filter(p => p.status === 'ONLINE');
+    await Promise.all(targets.map(pc => (async () => {
+      const res = await sendPacket({
+        fromId: State.server.id, toId: pc.id,
+        type:'PRODUCT_REMOVED', color:'err',
+        label:'PRODUCT REMOVED', sub:`SERVER → ${pc.name}`,
+        payload: { product: prod.name }
+      });
+      if (res.ok){ delete pc.inventory[productId]; renderDevices(); }
+    })()));
+    save();
+  });
+}
+
+function addPcModal(){
+  const idx = State.pcs.length + 1;
+  openModal({
+    title:'Add Employee PC',
+    html: `
+      <label class="lbl">Employee Name</label>
+      <input class="input" id="npEmp" value="Employee ${idx}"/>
+      <label class="lbl">PC Name</label>
+      <input class="input" id="npName" value="PC-${String(idx).padStart(2,'0')}"/>
+      <label class="lbl">IP Address</label>
+      <input class="input" id="npIp" value="192.168.1.${100+idx}"/>
+    `,
+    actions: [
+      { label:'Cancel', fn: closeModal },
+      { label:'Add & Sync', cls:'primary', fn: async () => {
+        const name = $('#npName').value.trim();
+        const employee = $('#npEmp').value.trim();
+        const ip = $('#npIp').value.trim();
+        if (!name || !ip){ toast('Name and IP required', 'error'); return; }
+        closeModal();
+        await addPc({ name, employee, ip });
+      }}
+    ]
+  });
+}
+
+function addServerModal(){
+  const idx = State.servers.length + 1;
+  openModal({
+    title:'Add Server',
+    html: `
+      <label class="lbl">Server Name</label>
+      <input class="input" id="nsName" value="SERVER-${String(idx).padStart(2,'0')}"/>
+      <label class="lbl">IP Address</label>
+      <input class="input" id="nsIp" value="192.168.1.${100 + idx*10}"/>
+      <label class="lbl">Port</label>
+      <input class="input" type="number" id="nsPort" value="8080"/>
+      <label class="lbl">Server Type</label>
+      <select class="input" id="nsType">
+        <option value="Inventory">Inventory Server</option>
+        <option value="Backup" selected>Backup Server</option>
+        <option value="Database">Database Server</option>
+      </select>
+      <p style="color:var(--dim);font-size:12px;margin-top:14px;line-height:1.6">
+        New servers join as <b style="color:var(--purple)">BACKUP</b>. SERVER-01 remains primary.
+      </p>
+    `,
+    actions: [
+      { label:'Cancel', fn: closeModal },
+      { label:'Add Server', cls:'primary', fn: async () => {
+        const name = $('#nsName').value.trim();
+        const ip = $('#nsIp').value.trim();
+        const port = parseInt($('#nsPort').value,10) || 8080;
+        const type = $('#nsType').value;
+        if (!name || !ip){ toast('Name and IP required', 'error'); return; }
+        closeModal();
+        await addServer({ name, ip, port, type });
+      }}
+    ]
+  });
+}
+
+/* ============================================================
+   22. DRAWER
+   ============================================================ */
+function initDrawer(){
+  const drawer = $('#drawer');
+  $('#infoBtn').onclick = () => drawer.classList.toggle('open');
+  $('#drawerClose').onclick = () => drawer.classList.remove('open');
+  $('#pickerClose').onclick = () => closePicker();
+
+  $$('input[name=proto]').forEach(r => r.onchange = e => {
+    State.proto = e.target.value;
+    Feed.push(`⚙ Protocol: <b>${State.proto}</b>`, 'sys');
+  });
+  $('#latSlider').oninput = e => {
+    State.conditions.latency = +e.target.value;
+    $('#latVal').textContent = State.conditions.latency + ' ms';
+  };
+  $('#lossSlider').oninput = e => {
+    State.conditions.loss = +e.target.value;
+    $('#lossVal').textContent = State.conditions.loss + ' %';
+  };
+}
+
+/* ============================================================
+   23. AUTO ARRANGE / RESET LAYOUT
+   ============================================================ */
+function autoArrange(){
+  defaultPositions();
+  renderDevices(); renderLinks(); save();
+  Feed.push(`⟳ Auto arranged layout`, 'sys');
+}
+function resetLayout(){
+  defaultPositions();
+  renderDevices(); renderLinks(); save();
+  Feed.push(`⌂ Layout reset · inventory preserved`, 'sys');
+}
+
+/* ============================================================
+   24. PERSISTENCE
+   ============================================================ */
+function save(){
+  try {
+    localStorage.setItem('netsync_v5', JSON.stringify({
+      servers: State.servers.map(s => ({ ...s })),
+      products: State.products,
+      pcs: State.pcs.map(p => ({ ...p })),
+      links: State.links,
+      conditions: State.conditions,
+      proto: State.proto,
+      speed: ANIM_SPEED
+    }));
+  } catch(e){}
+}
+function load(){
+  try {
+    const raw = localStorage.getItem('netsync_v5');
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    if (s.servers?.length){
+      State.servers = s.servers;
+      State.server = State.servers.find(x => x.role === 'PRIMARY') || State.servers[0];
+    }
+    if (s.products) State.products = s.products;
+    if (s.pcs) State.pcs = s.pcs.map(p => ({ ...p, syncState: p.syncState || 'SYNCED' }));
+    if (s.links) State.links = s.links;
+    if (s.conditions) State.conditions = s.conditions;
+    if (s.proto) State.proto = s.proto;
+    if (s.speed) ANIM_SPEED = s.speed;
+    return true;
+  } catch(e){ return false; }
+}
+setInterval(save, 3000);
+
+/* ============================================================
+   25. FIND DEVICE
+   ============================================================ */
+function findDevice(id){
+  return State.pcs.find(p => p.id === id) || State.servers.find(s => s.id === id);
+}
+
+/* ============================================================
+   26. BOOT + RESIZE HANDLING
+   ============================================================ */
+let resizeTimer = null;
+function handleResize(){
+  applyResponsiveSizing();
+  renderDevices();
+  renderLinks();
+}
+
+function bindTop(){
+  $('#addPcBtn').onclick = addPcModal;
+  $('#addSrvBtn').onclick = addServerModal;
+  $('#addProdBtn').onclick = addProductModal;
+  $('#autoArrangeBtn').onclick = autoArrange;
+  $('#resetLayoutBtn').onclick = resetLayout;
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape'){
+      closeModal(); closePicker();
+      closeSpeedMenu();
+      $('#drawer').classList.remove('open');
+      document.querySelector('.pkt-pop')?.remove();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(handleResize, 120);
+  });
+  window.addEventListener('orientationchange', () => {
+    setTimeout(handleResize, 200);
+  });
+}
+
+function boot(){
+  applyResponsiveSizing();
+  if (!load()) seed();
+
+  renderDevices();
+  renderLinks();
+  UI.renderInventory();
+  UI.chips();
+  initDrawer();
+  initSpeedControl();
+  bindTop();
+
+  $$('input[name=proto]').forEach(r => r.checked = (r.value === State.proto));
+  setSpeed(ANIM_SPEED);
+
+  Feed.clear();
+  Feed.push(`System ready · ${State.pcs.filter(p=>p.status==='ONLINE').length} clients online`, 'sys');
+  Feed.push(`Drag any device · double-click to edit · click to inspect`, 'sys');
+  Feed.push(`Sell a product or edit inventory to watch sync happen`, 'sys');
+}
+
+window.addEventListener('DOMContentLoaded', boot);
+
+})();
+</script>
+</body>
+</html>
