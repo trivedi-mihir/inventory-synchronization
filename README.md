@@ -141,14 +141,6 @@ Potential extensions include:
 - More detailed packet inspection and protocol analysis.
 - Advanced congestion-control demonstrations.
 
-## 📸 Demo
-
-Add a screenshot or a short demonstration video here after uploading it.
-
-**Live Demo:** Add your GitHub Pages URL after deployment.
-
-**Project Repository:** This repository.
-
 ## 👨‍💻 Author
 
 **Mihir Trivedi**
